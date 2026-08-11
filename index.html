@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111418">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ジムノート">
+  <title>ジムノート</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon-192.png">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header class="top">
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v3</b></h1></div>
+  <button id="installBtn" class="sub" hidden>インストール</button>
+</header>
+
+<main>
+<section id="today" class="page active">
+  <div class="hero">
+    <div><span id="todayDate" class="muted"></span><h2>今日のメニュー</h2><p>ZERO-i → ウォームアップ → 筋トレ → 有酸素</p></div>
+    <div class="ring" id="ring"><span id="pct">0%</span></div>
+  </div>
+  <div id="setupNotice" class="notice" hidden>
+    <strong>最初に初期設定を読み込んでください</strong>
+    <p>「設定」→「データ」→「バックアップ / 初期設定を読み込む」から、私が一緒に渡したJSONファイルを選びます。</p>
+    <button class="primary full" data-page-go="settings">設定を開く</button>
+  </div>
+
+  <div class="section-title"><h3>ZERO-i ストレッチ</h3><span>各10回・ゆっくり</span></div>
+  <div id="zeroList"></div>
+
+  <div class="section-title"><h3>ウォームアップ</h3><span>疲れる前に終える</span></div>
+  <div class="card row">
+    <div><strong>🚶 ウォーキング</strong><small>5分 / 4.5〜5.0km/h / 傾斜1〜2%</small></div>
+    <button class="done" data-special="warmup">完了</button>
+  </div>
+
+  <div class="section-title"><h3>筋トレ</h3><span>最後の2回が少しきつい</span></div>
+  <div id="exerciseList"></div>
+
+  <div class="section-title"><h3>有酸素</h3><span>筋トレ後に20分</span></div>
+  <div class="card">
+    <div class="seg"><button class="active" data-cardio="walk">ウォーキング</button><button data-cardio="bike">バイク</button></div>
+    <div id="walkPane" class="pane active"><p><b>20分</b>　5.0〜5.5km/h　傾斜2〜4%</p></div>
+    <div id="bikePane" class="pane"><p><b>20分</b>　会話できる程度の負荷</p></div>
+    <button class="primary full" id="cardioDone">有酸素を完了</button>
+  </div>
+
+  <div class="card row">
+    <div><strong>〰️ 振動マシン</strong><small>最後に5分。おまけとして利用。</small></div>
+    <button class="done" data-special="vibration">完了</button>
+  </div>
+
+  <button id="saveWorkout" class="primary full save">今日のトレーニングを保存</button>
+  <p class="caution">痛みが出た種目は中止。フォームを崩してまで重量・回数を合わせないでください。</p>
+</section>
+
+<section id="history" class="page">
+  <div class="heading"><small>HISTORY</small><h2>トレーニング履歴</h2></div>
+  <div id="historySummary" class="stats"></div>
+  <div id="historyList"></div>
+</section>
+
+<section id="body" class="page">
+  <div class="heading"><small>BODY</small><h2>からだの記録</h2><p>体重だけでなく、体脂肪率・筋肉量・腹囲を見る。</p></div>
+  <form id="bodyForm" class="card form">
+    <label>測定日<input id="bodyDate" type="date" required></label>
+    <div class="grid2">
+      <label>体重 kg<input id="bodyWeight" type="number" step=".1" min="30" max="200" required></label>
+      <label>体脂肪率 %<input id="bodyFat" type="number" step=".1" min="3" max="60"></label>
+      <label>骨格筋量 kg<input id="bodyMuscle" type="number" step=".1" min="10" max="80"></label>
+      <label>腹囲 cm<input id="bodyWaist" type="number" step=".1" min="40" max="180"></label>
+    </div>
+    <button class="primary full" type="submit">測定データを追加</button>
+  </form>
+  <div class="card">
+    <div class="chartHead"><strong>推移</strong><select id="metric"><option value="weight">体重</option><option value="fat">体脂肪率</option><option value="muscle">骨格筋量</option><option value="waist">腹囲</option></select></div>
+    <canvas id="chart" height="220"></canvas>
+  </div>
+  <div id="bodyList"></div>
+</section>
+
+<section id="settings" class="page">
+  <div class="heading"><small>SETTINGS</small><h2>設定</h2></div>
+  <div class="card form">
+    <h3>目標・タイマー</h3>
+    <div class="grid2">
+      <label>目標体重 kg<input id="goalWeight" type="number" step=".1"></label>
+      <label>目標体脂肪率 %<input id="goalFat" type="number" step=".1"></label>
+      <label>目標骨格筋量 kg<input id="goalMuscle" type="number" step=".1"></label>
+      <label>休憩 秒<input id="restSec" type="number" min="30" max="300" step="15"></label>
+    </div>
+    <button id="saveSettings" class="primary full">設定を保存</button>
+  </div>
+
+  <div class="card">
+    <h3>データ</h3>
+    <p class="muted">身体データと履歴はこの端末内に保存され、公開サイトのファイルには入りません。</p>
+    <div class="stack">
+      <label class="sub full file">バックアップ / 初期設定を読み込む<input id="importFile" type="file" accept="application/json" hidden></label>
+      <button id="exportBtn" class="sub full">バックアップを書き出す</button>
+      <button id="resetBtn" class="danger full">端末内データを初期化</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>アプリ</h3>
+    <p class="muted">PWA版 v3。ホーム画面から起動でき、読み込み後はオフラインでも使用できます。</p>
+    <button id="checkUpdate" class="sub full">更新を確認</button>
+  </div>
+</section>
+</main>
+
+<nav>
+  <button class="nav active" data-page="today">🏋️<span>今日</span></button>
+  <button class="nav" data-page="history">🗓️<span>履歴</span></button>
+  <button class="nav" data-page="body">📈<span>からだ</span></button>
+  <button class="nav" data-page="settings">⚙️<span>設定</span></button>
+</nav>
+
+<div id="timer" class="timer hidden">休憩 <b id="timerN">60</b> 秒 <button id="timerX">×</button></div>
+<div id="toast" class="toast"></div>
+<script src="./app.js"></script>
+</body>
+</html>
