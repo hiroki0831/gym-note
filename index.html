@@ -14,21 +14,32 @@
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v3</b></h1></div>
-  <button id="installBtn" class="sub" hidden>インストール</button>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v4</b></h1></div>
+  <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
 <main>
 <section id="today" class="page active">
   <div class="hero">
-    <div><span id="todayDate" class="muted"></span><h2>今日のメニュー</h2><p>ZERO-i → ウォームアップ → 筋トレ → 有酸素</p></div>
+    <div>
+      <span id="todayDate" class="muted"></span>
+      <h2>今日のメニュー</h2>
+      <p>ZERO-i → ウォームアップ → 筋トレ → 有酸素</p>
+    </div>
     <div class="ring" id="ring"><span id="pct">0%</span></div>
   </div>
+
   <div id="setupNotice" class="notice" hidden>
-    <strong>最初に初期設定を読み込んでください</strong>
-    <p>「設定」→「データ」→「バックアップ / 初期設定を読み込む」から、私が一緒に渡したJSONファイルを選びます。</p>
+    <strong>初期設定を読み込んでください</strong>
+    <p>初めて使う端末では「設定」→「バックアップ / 初期設定を読み込む」からJSONを選びます。</p>
     <button class="primary full" data-page-go="settings">設定を開く</button>
   </div>
+
+  <div id="resumeNotice" class="resume" hidden>
+    <div><strong>途中のトレーニングを復元しました</strong><small>アプリを閉じても今日の入力は残ります。</small></div>
+  </div>
+
+  <div id="quickStats" class="quickStats"></div>
 
   <div class="section-title"><h3>ZERO-i ストレッチ</h3><span>各10回・ゆっくり</span></div>
   <div id="zeroList"></div>
@@ -39,14 +50,25 @@
     <button class="done" data-special="warmup">完了</button>
   </div>
 
-  <div class="section-title"><h3>筋トレ</h3><span>最後の2回が少しきつい</span></div>
+  <div class="section-title">
+    <div><h3>筋トレ</h3><span>実際に使う重量へその場で変更できます</span></div>
+  </div>
   <div id="exerciseList"></div>
 
-  <div class="section-title"><h3>有酸素</h3><span>筋トレ後に20分</span></div>
+  <div class="section-title"><h3>有酸素</h3><span>筋トレ後</span></div>
   <div class="card">
-    <div class="seg"><button class="active" data-cardio="walk">ウォーキング</button><button data-cardio="bike">バイク</button></div>
-    <div id="walkPane" class="pane active"><p><b>20分</b>　5.0〜5.5km/h　傾斜2〜4%</p></div>
-    <div id="bikePane" class="pane"><p><b>20分</b>　会話できる程度の負荷</p></div>
+    <div class="seg">
+      <button class="active" data-cardio="walk">ウォーキング</button>
+      <button data-cardio="bike">バイク</button>
+    </div>
+    <div id="walkPane" class="pane active"><p>目安：5.0〜5.5km/h / 傾斜2〜4%</p></div>
+    <div id="bikePane" class="pane"><p>目安：会話できる程度の負荷</p></div>
+    <div class="inlineField">
+      <label>時間</label>
+      <button class="mini" data-cardio-min="-5">−5</button>
+      <strong><span id="cardioMinutesText">20</span>分</strong>
+      <button class="mini" data-cardio-min="5">＋5</button>
+    </div>
     <button class="primary full" id="cardioDone">有酸素を完了</button>
   </div>
 
@@ -55,18 +77,49 @@
     <button class="done" data-special="vibration">完了</button>
   </div>
 
+  <div class="card form">
+    <label>今日のメモ
+      <textarea id="sessionNote" rows="3" placeholder="例：右肩は問題なし。レッグプレスはまだ余裕あり。"></textarea>
+    </label>
+  </div>
+
   <button id="saveWorkout" class="primary full save">今日のトレーニングを保存</button>
   <p class="caution">痛みが出た種目は中止。フォームを崩してまで重量・回数を合わせないでください。</p>
 </section>
 
 <section id="history" class="page">
-  <div class="heading"><small>HISTORY</small><h2>トレーニング履歴</h2></div>
+  <div class="heading">
+    <small>HISTORY</small>
+    <h2>過去の履歴</h2>
+    <p>日ごとの内容と、マシンごとの重量の伸びを確認できます。</p>
+  </div>
+
   <div id="historySummary" class="stats"></div>
+
+  <div class="card filterCard">
+    <label>表示する月
+      <select id="historyMonth"></select>
+    </label>
+  </div>
+
+  <div class="card">
+    <div class="chartHead">
+      <div><strong>マシン別の重量推移</strong><small id="strengthChartCaption">記録された重量</small></div>
+      <select id="strengthMetric"></select>
+    </div>
+    <canvas id="strengthChart" height="220"></canvas>
+  </div>
+
   <div id="historyList"></div>
 </section>
 
 <section id="body" class="page">
-  <div class="heading"><small>BODY</small><h2>からだの記録</h2><p>体重だけでなく、体脂肪率・筋肉量・腹囲を見る。</p></div>
+  <div class="heading">
+    <small>BODY</small>
+    <h2>からだの記録</h2>
+    <p>体重だけでなく、体脂肪率・筋肉量・腹囲を見る。</p>
+  </div>
+
   <form id="bodyForm" class="card form">
     <label>測定日<input id="bodyDate" type="date" required></label>
     <div class="grid2">
@@ -77,15 +130,26 @@
     </div>
     <button class="primary full" type="submit">測定データを追加</button>
   </form>
+
   <div class="card">
-    <div class="chartHead"><strong>推移</strong><select id="metric"><option value="weight">体重</option><option value="fat">体脂肪率</option><option value="muscle">骨格筋量</option><option value="waist">腹囲</option></select></div>
+    <div class="chartHead">
+      <strong>からだの推移</strong>
+      <select id="metric">
+        <option value="weight">体重</option>
+        <option value="fat">体脂肪率</option>
+        <option value="muscle">骨格筋量</option>
+        <option value="waist">腹囲</option>
+      </select>
+    </div>
     <canvas id="chart" height="220"></canvas>
   </div>
+
   <div id="bodyList"></div>
 </section>
 
 <section id="settings" class="page">
   <div class="heading"><small>SETTINGS</small><h2>設定</h2></div>
+
   <div class="card form">
     <h3>目標・タイマー</h3>
     <div class="grid2">
@@ -99,17 +163,18 @@
 
   <div class="card">
     <h3>データ</h3>
-    <p class="muted">身体データと履歴はこの端末内に保存され、公開サイトのファイルには入りません。</p>
+    <p class="muted">身体データと履歴はこの端末内に保存されます。v3のデータも自動で引き継ぎます。</p>
     <div class="stack">
       <label class="sub full file">バックアップ / 初期設定を読み込む<input id="importFile" type="file" accept="application/json" hidden></label>
-      <button id="exportBtn" class="sub full">バックアップを書き出す</button>
+      <button id="exportBtn" class="sub full">JSONバックアップを書き出す</button>
+      <button id="csvBtn" class="sub full">履歴をCSVで書き出す</button>
       <button id="resetBtn" class="danger full">端末内データを初期化</button>
     </div>
   </div>
 
   <div class="card">
     <h3>アプリ</h3>
-    <p class="muted">PWA版 v3。ホーム画面から起動でき、読み込み後はオフラインでも使用できます。</p>
+    <p class="muted">PWA版 v4。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
     <button id="checkUpdate" class="sub full">更新を確認</button>
   </div>
 </section>
@@ -124,6 +189,7 @@
 
 <div id="timer" class="timer hidden">休憩 <b id="timerN">60</b> 秒 <button id="timerX">×</button></div>
 <div id="toast" class="toast"></div>
+
 <script src="./app.js"></script>
 </body>
 </html>
