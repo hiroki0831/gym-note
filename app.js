@@ -399,7 +399,7 @@ async function analyzeFood(){
   $("foodPreview").innerHTML='<div class="card aiLoading"><span class="aiDot"></span><span>AIがカロリーを計算しています…</span></div>';
   $("analyzeFood").disabled=true;
   try{
-    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json","X-App-Pin":pin},body:JSON.stringify({text,meal:mealLabel($("foodMeal").value)})});
+    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({pin,text,meal:mealLabel($("foodMeal").value)})});
     const data=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);
     foodPreviewData=normalizeAiResult(data);renderFoodPreview();
