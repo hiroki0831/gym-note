@@ -14,7 +14,7 @@
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v5 AI食事</b></h1></div>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.2 AI食事・消費</b></h1></div>
   <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
@@ -40,6 +40,8 @@
   </div>
 
   <div id="quickStats" class="quickStats"></div>
+
+  <div id="workoutTracker" class="card burnTracker"></div>
 
   <div class="section-title"><h3>ZERO-i ストレッチ</h3><span>各10回・ゆっくり</span></div>
   <div id="zeroList"></div>
@@ -222,9 +224,10 @@
     <h3>カロリー設定</h3>
     <div class="grid2">
       <label>1日の摂取目標 kcal<input id="calorieGoal" type="number" min="1000" max="5000" step="50"></label>
-      <label>1日の消費目安 kcal<input id="dailyBurn" type="number" min="1000" max="6000" step="50"></label>
+      <label>基礎代謝 kcal<input id="bmr" type="number" min="800" max="3000" step="10"></label>
+      <label>日常生活の消費 kcal<input id="activityBurn" type="number" min="0" max="3000" step="25"></label>
     </div>
-    <p class="muted tiny">初期値は摂取1,900 kcal / 消費2,300 kcal。あとでいつでも変更できます。</p>
+    <p class="muted tiny">初期値：基礎代謝1,540 kcal / 日常生活550 kcal。ジム分はトレーニング記録から自動で加算します。</p>
   </div>
 
   <div class="card form">

@@ -1,11 +1,11 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
-const VERSION=5;
+const VERSION=6;
 
 const TEMPLATE={
-  dataVersion:5,
+  dataVersion:6,
   configured:false,
-  goals:{weight:null,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300},
+  goals:{weight:null,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1540,activityBurn:550},
   zeroi:[
     {id:"shoulder_elevation",name:"Shoulder Elevation",jp:"ショルダー・エレベーション",target:"背中上部・肩まわり",reps:10,icon:"🙆"},
     {id:"chest_extension",name:"Chest Extension",jp:"チェスト・エクステンション",target:"胸部・肩",reps:10,icon:"🫸"},
@@ -41,13 +41,16 @@ function migrate(x){
   Object.assign(s,x);
   s.dataVersion=VERSION;
   s.goals=Object.assign({},TEMPLATE.goals,x.goals||{});
+  // v5以前は「1日の消費目安」だけだったため、v5.2では基礎代謝＋日常生活＋ジムに分離。
+  if(x.goals?.bmr==null) s.goals.bmr=1540;
+  if(x.goals?.activityBurn==null) s.goals.activityBurn=550;
   s.zeroi=x.zeroi?.length?x.zeroi:clone(TEMPLATE.zeroi);
   s.exercises=x.exercises?.length?x.exercises:clone(TEMPLATE.exercises);
   s.body=Array.isArray(x.body)?x.body:[];
   s.foods=Array.isArray(x.foods)?x.foods:[];
   s.ai=Object.assign({},TEMPLATE.ai,x.ai||{});
   s.history=Array.isArray(x.history)?x.history.map(h=>{
-    const hh=Object.assign({zeroi:[],note:"",cardioMinutes:h.cardio?20:0},h);
+    const hh=Object.assign({zeroi:[],note:"",cardioMinutes:h.cardio?20:0,durationMinutes:0,gymCalories:0,gymBreakdown:null,workoutStartedAt:null,workoutEndedAt:null},h);
     hh.exercises=Array.isArray(h.exercises)?h.exercises.map(e=>Object.assign({
       setsDone:e.setsDone||0,
       reps:e.reps||10,
@@ -77,6 +80,7 @@ function blankSession(){
   return {
     date:todayKey(),
     startedAt:new Date().toISOString(),
+    workoutStartedAt:null,
     sets,weights,zeroi,efforts:{},
     warmup:false,cardio:false,cardioType:"walk",cardioMinutes:20,
     vibration:false,note:""
@@ -84,7 +88,7 @@ function blankSession(){
 }
 function sessionHasProgress(s){
   if(!s)return false;
-  return Object.values(s.sets||{}).flat().some(Boolean) ||
+  return !!s.workoutStartedAt || Object.values(s.sets||{}).flat().some(Boolean) ||
     Object.values(s.zeroi||{}).some(Boolean) ||
     s.warmup||s.cardio||s.vibration||String(s.note||"").trim().length>0;
 }
@@ -127,13 +131,88 @@ document.querySelectorAll("[data-page-go]").forEach(b=>b.onclick=()=>page(b.data
 function latestBody(){
   return [...state.body].sort((a,b)=>String(a.date).localeCompare(String(b.date))).at(-1)||null;
 }
+
+// ---------- 消費カロリー v5.2 ----------
+function userWeight(){
+  const b=latestBody();
+  return Number(b?.weight)||71;
+}
+function metKcal(met,minutes,weight=userWeight()){
+  // 基礎代謝を別に足すため、運動分は「安静時1METを除いた追加消費」として計算。
+  return Math.max(0,(Number(met)||0)-1)*3.5*Math.max(30,Number(weight)||71)/200*Math.max(0,Number(minutes)||0);
+}
+function completedSets(s=session){
+  return Object.values(s?.sets||{}).flat().filter(Boolean).length;
+}
+function completedZeroi(s=session){
+  return Object.values(s?.zeroi||{}).filter(Boolean).length;
+}
+function ensureWorkoutStarted(){
+  if(!session.workoutStartedAt){
+    session.workoutStartedAt=new Date().toISOString();
+    saveSession();
+  }
+}
+function workoutElapsedMinutes(s=session,endAt=new Date()){
+  if(!s?.workoutStartedAt)return 0;
+  const ms=new Date(endAt)-new Date(s.workoutStartedAt);
+  return Math.max(0,Math.min(240,ms/60000));
+}
+function estimateGymBurn(s=session,endAt=new Date()){
+  const weight=userWeight();
+  const cardioMin=s?.cardio?Number(s.cardioMinutes||20):0;
+  const warmupMin=s?.warmup?5:0;
+  const vibrationMin=s?.vibration?5:0;
+  const zeroiMin=completedZeroi(s)*1.5;
+  const elapsed=workoutElapsedMinutes(s,endAt);
+  const fallbackStrength=Math.max(0,completedSets(s)*3+zeroiMin);
+  const knownOther=cardioMin+warmupMin+vibrationMin+zeroiMin;
+  // 開始時刻がある場合は休憩込みのジム時間から既知の有酸素等を除く。未開始なら記録内容から推定。
+  const strengthMin=elapsed>0?Math.max(0,elapsed-knownOther):Math.max(0,completedSets(s)*3);
+  const stretch=metKcal(2.5,zeroiMin,weight);
+  const strength=metKcal(4.5,strengthMin,weight);
+  const warmup=metKcal(3.5,warmupMin,weight);
+  const cardio=metKcal(s?.cardioType==="bike"?5.5:4.8,cardioMin,weight);
+  const vibration=metKcal(2.0,vibrationMin,weight);
+  const total=stretch+strength+warmup+cardio+vibration;
+  const duration=elapsed>0?elapsed:strengthMin+knownOther;
+  return {
+    total:Math.round(total),duration:Math.round(duration),weight,
+    stretch:Math.round(stretch),strength:Math.round(strength),warmup:Math.round(warmup),cardio:Math.round(cardio),vibration:Math.round(vibration),
+    strengthMin:Math.round(strengthMin),zeroiMin:Math.round(zeroiMin),warmupMin,cardioMin,vibrationMin,estimated:elapsed<=0
+  };
+}
+function historyGymBurn(h){
+  if(Number(h?.gymCalories)>0)return Number(h.gymCalories);
+  // 旧履歴は保存済み情報から概算。
+  const pseudo={
+    sets:Object.fromEntries((h?.exercises||[]).map(e=>[e.id,Array(Math.max(0,Number(e.setsDone||0))).fill(true)])),
+    zeroi:Object.fromEntries((h?.zeroi||[]).map(z=>[z.id,true])),
+    warmup:!!h?.warmup,cardio:!!h?.cardio,cardioType:h?.cardioType||"walk",cardioMinutes:Number(h?.cardioMinutes||20),
+    vibration:!!h?.vibration,workoutStartedAt:null
+  };
+  return estimateGymBurn(pseudo).total;
+}
+function gymBurnForDay(day){
+  let total=(state.history||[]).filter(h=>String(h.date||"").slice(0,10)===day).reduce((a,h)=>a+historyGymBurn(h),0);
+  if(day===todayKey() && sessionHasProgress(session)) total+=estimateGymBurn(session).total;
+  return Math.round(total);
+}
+function totalBurnForDay(day){
+  const bmr=Number(state.goals.bmr)||1540;
+  const activity=Number(state.goals.activityBurn)||550;
+  const gym=gymBurnForDay(day);
+  return {bmr,activity,gym,total:Math.round(bmr+activity+gym)};
+}
 function quickStats(){
   const b=latestBody();
   const goal=state.goals||{};
+  const burn=estimateGymBurn(session);
   $("quickStats").innerHTML=`
     <div class="quickStat"><span>最新体重</span><b>${b?.weight!=null?fmt(b.weight)+" kg":"—"}</b></div>
     <div class="quickStat"><span>体脂肪率</span><b>${b?.fat!=null?fmt(b.fat)+" %":"—"}</b></div>
-    <div class="quickStat"><span>目標体重</span><b>${goal.weight!=null?fmt(goal.weight)+" kg":"—"}</b></div>`;
+    <div class="quickStat"><span>目標体重</span><b>${goal.weight!=null?fmt(goal.weight)+" kg":"—"}</b></div>
+    <div class="quickStat gymQuick"><span>今日のジム</span><b>🔥 ${burn.total} kcal</b></div>`;
 }
 function previousExercise(id){
   const hs=[...state.history].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -164,12 +243,40 @@ function updateProgress(){
 }
 function touchSession(){saveSession();updateProgress()}
 
+function renderWorkoutTracker(){
+  const box=$("workoutTracker");
+  if(!box)return;
+  const b=estimateGymBurn(session);
+  const running=!!session.workoutStartedAt;
+  box.innerHTML=`
+    <div class="burnTrackerTop">
+      <div><span class="muted tiny">ジム消費（推定）</span><strong>🔥 ${b.total} kcal</strong></div>
+      <div class="burnTrackerTime"><span>${running?"経過":"未開始"}</span><b>${running?b.duration+"分":"—"}</b></div>
+    </div>
+    <div class="burnBreakdown">
+      <span>ZERO-i <b>${b.stretch} kcal</b></span>
+      <span>筋トレ・休憩 <b>${b.strength} kcal</b></span>
+      <span>有酸素 <b>${b.cardio} kcal</b></span>
+      <span>その他 <b>${b.warmup+b.vibration} kcal</b></span>
+    </div>
+    <button id="workoutToggle" class="${running?"sub":"primary"} full">${running?"開始時刻をリセット":"▶ トレーニング開始"}</button>
+    <p class="tiny muted">体重 ${fmt(b.weight)}kg を使った概算。開始を押し忘れても、記録内容から自動推定します。</p>`;
+  $("workoutToggle").onclick=()=>{
+    if(running){
+      if(!confirm("トレーニング開始時刻を今にリセットしますか？"))return;
+    }
+    session.workoutStartedAt=new Date().toISOString();
+    sessionWasRestored=false;saveSession();renderToday();
+  };
+}
+
 function renderToday(){
   const d=new Date(),w="日月火水木金土"[d.getDay()];
   $("todayDate").textContent=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${w}）`;
   $("setupNotice").hidden=state.configured;
   $("resumeNotice").hidden=!sessionWasRestored;
   quickStats();
+  renderWorkoutTracker();
 
   $("zeroList").innerHTML=state.zeroi.map((z,i)=>`
     <div class="card row">
@@ -180,6 +287,7 @@ function renderToday(){
       <button class="done ${session.zeroi[z.id]?"on":""}" data-zero="${z.id}">${session.zeroi[z.id]?"完了 ✓":"完了"}</button>
     </div>`).join("");
   document.querySelectorAll("[data-zero]").forEach(b=>b.onclick=()=>{
+    ensureWorkoutStarted();
     session.zeroi[b.dataset.zero]=!session.zeroi[b.dataset.zero];
     sessionWasRestored=false;touchSession();renderToday();
   });
@@ -215,6 +323,7 @@ function renderToday(){
   }).join("");
 
   document.querySelectorAll("[data-set]").forEach(b=>b.onclick=()=>{
+    ensureWorkoutStarted();
     const [id,j]=b.dataset.set.split("|");
     session.sets[id][+j]=!session.sets[id][+j];
     if(session.sets[id][+j])startTimer();
@@ -240,7 +349,7 @@ function renderToday(){
   document.querySelectorAll("[data-special]").forEach(b=>{
     const k=b.dataset.special;
     b.classList.toggle("on",session[k]);b.textContent=session[k]?"完了 ✓":"完了";
-    b.onclick=()=>{session[k]=!session[k];sessionWasRestored=false;touchSession();renderToday()};
+    b.onclick=()=>{ensureWorkoutStarted();session[k]=!session[k];sessionWasRestored=false;touchSession();renderToday()};
   });
 
   document.querySelectorAll("[data-cardio]").forEach(b=>{
@@ -255,7 +364,7 @@ function renderToday(){
     sessionWasRestored=false;touchSession();renderToday();
   });
   $("cardioDone").textContent=session.cardio?"有酸素 完了 ✓":"有酸素を完了";
-  $("cardioDone").onclick=()=>{session.cardio=!session.cardio;sessionWasRestored=false;touchSession();renderToday()};
+  $("cardioDone").onclick=()=>{ensureWorkoutStarted();session.cardio=!session.cardio;sessionWasRestored=false;touchSession();renderToday()};
 
   $("sessionNote").value=session.note||"";
   $("sessionNote").oninput=()=>{session.note=$("sessionNote").value;sessionWasRestored=false;saveSession()};
@@ -287,9 +396,17 @@ $("saveWorkout").onclick=()=>{
 
   if(!done.length){toast("筋トレを1種目以上記録してください");return}
 
+  const workoutEndedAt=new Date().toISOString();
+  const burn=estimateGymBurn(session,workoutEndedAt);
   state.history.unshift({
     id:Date.now(),
-    date:new Date().toISOString(),
+    date:workoutEndedAt,
+    workoutStartedAt:session.workoutStartedAt||null,
+    workoutEndedAt,
+    durationMinutes:burn.duration,
+    gymCalories:burn.total,
+    gymBreakdown:{stretch:burn.stretch,strength:burn.strength,warmup:burn.warmup,cardio:burn.cardio,vibration:burn.vibration},
+    calorieWeight:burn.weight,
     zeroi:state.zeroi.filter(z=>session.zeroi[z.id]).map(z=>({id:z.id,name:z.name,reps:z.reps})),
     warmup:session.warmup,
     cardio:session.cardio,
@@ -308,7 +425,7 @@ $("saveWorkout").onclick=()=>{
 
   state.configured=true;save();clearSession();
   sessionWasRestored=false;session=blankSession();saveSession();
-  renderToday();toast("今日のトレーニングを保存しました");
+  renderToday();toast(`保存しました・ジム約${burn.total} kcal`);
 };
 
 
@@ -328,15 +445,18 @@ function foodTotals(rows){
 function renderFood(){
   if(!$("foodDate").value)$("foodDate").value=todayKey();
   const day=selectedFoodDay(),rows=foodsForDay(day),t=foodTotals(rows);
-  const goal=Number(state.goals.calorieGoal)||1900,burn=Number(state.goals.dailyBurn)||2300;
-  const remaining=goal-t.kcal,balance=burn-t.kcal,pct=Math.max(0,Math.min(100,(t.kcal/goal)*100));
+  const goal=Number(state.goals.calorieGoal)||1900,burn=totalBurnForDay(day);
+  const remaining=goal-t.kcal,balance=burn.total-t.kcal,pct=Math.max(0,Math.min(100,(t.kcal/goal)*100));
   $("foodStats").innerHTML=`
     <div class="foodStat"><span>摂取</span><b>${Math.round(t.kcal)} kcal</b></div>
-    <div class="foodStat"><span>目標</span><b>${Math.round(goal)} kcal</b></div>
-    <div class="foodStat"><span>消費目安</span><b>${Math.round(burn)} kcal</b></div>`;
+    <div class="foodStat"><span>基礎代謝</span><b>${Math.round(burn.bmr)} kcal</b></div>
+    <div class="foodStat"><span>日常生活</span><b>${Math.round(burn.activity)} kcal</b></div>
+    <div class="foodStat gymBurnStat"><span>🏋️ ジム</span><b>＋${Math.round(burn.gym)} kcal</b></div>`;
   $("foodRemaining").textContent=remaining>=0?`あと ${Math.round(remaining)} kcal`:`${Math.round(Math.abs(remaining))} kcal 超過`;
   $("calorieFill").style.width=pct+"%";$("calorieFill").classList.toggle("over",remaining<0);
-  $("foodBalance").textContent=`消費目安との差：${balance>=0?"−":"＋"}${Math.abs(Math.round(balance))} kcal ／ P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g`;
+  $("foodBalance").innerHTML=`<div class="totalBurnLine"><span>今日の総消費</span><b>${burn.total} kcal</b></div>
+    <div class="balanceLine">収支：<b>${balance>=0?"−":"＋"}${Math.abs(Math.round(balance))} kcal</b> <span>（消費 − 摂取）</span></div>
+    <div class="macroText">P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g</div>`;
   $("foodCountText").textContent=`${rows.length}件`;
   $("aiConnectionHint").textContent=state.ai?.endpoint?"AI接続済み。APIキーはスマホ側に保存しません。":"AI未接続：設定 → AI食事解析 にAPI URLを入れると使えます。";
   $("foodTodayList").innerHTML=rows.length?rows.map(x=>{
@@ -452,18 +572,20 @@ function renderHistory(){
   const rows=state.history.filter(h=>localYM(h.date)===ym).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const sets=rows.reduce((a,h)=>a+(h.exercises||[]).reduce((b,e)=>b+(e.setsDone||0),0),0);
   const cardio=rows.reduce((a,h)=>a+(h.cardio?Number(h.cardioMinutes||20):0),0);
+  const gymKcal=rows.reduce((a,h)=>a+historyGymBurn(h),0);
 
   $("historySummary").innerHTML=`
     <div class="card"><b>${rows.length}</b><small>この月の回数</small></div>
     <div class="card"><b>${sets}</b><small>総セット</small></div>
-    <div class="card"><b>${cardio}</b><small>有酸素 分</small></div>`;
+    <div class="card"><b>${cardio}</b><small>有酸素 分</small></div>
+    <div class="card"><b>🔥 ${Math.round(gymKcal)}</b><small>ジム kcal</small></div>`;
 
   $("historyList").innerHTML=rows.length?rows.map(h=>{
     const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0);
     return `<details class="card historyCard">
       <summary>
         <div class="historySummaryRow">
-          <div class="date"><b>${dateLabel(h.date)}</b><small>${timeLabel(h.date)} / ${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"有酸素なし"}</small></div>
+          <div class="date"><b>${dateLabel(h.date)}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${h.durationMinutes?`${h.durationMinutes}分`:(h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"時間未記録")}</small></div>
           <span class="count">${setCount} set ▾</span>
         </div>
       </summary>
@@ -474,6 +596,7 @@ function renderHistory(){
           ${(h.exercises||[]).map(e=>`<div><span>${e.name}</span><b>${fmt(e.weight)}kg × ${e.reps||10}回 × ${e.setsDone||0}set${e.effort?` / ${effortLabel(e.effort)}`:""}</b></div>`).join("")}
           <div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div>
           <div><span>振動マシン</span><b>${h.vibration?"完了":"—"}</b></div>
+          <div class="burnHistoryRow"><span>🔥 ジム消費</span><b>約 ${Math.round(historyGymBurn(h))} kcal</b></div>
         </div>
         ${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}
         <div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div>
@@ -569,7 +692,8 @@ function renderSettings(){
   $("goalMuscle").value=state.goals.muscle??"";
   $("restSec").value=state.goals.restSeconds||60;
   $("calorieGoal").value=state.goals.calorieGoal||1900;
-  $("dailyBurn").value=state.goals.dailyBurn||2300;
+  $("bmr").value=state.goals.bmr||1540;
+  $("activityBurn").value=state.goals.activityBurn||550;
   $("aiEndpoint").value=state.ai?.endpoint||"";
 }
 $("saveSettings").onclick=()=>{
@@ -579,7 +703,9 @@ $("saveSettings").onclick=()=>{
     muscle:$("goalMuscle").value?Number($("goalMuscle").value):null,
     restSeconds:Number($("restSec").value)||60,
     calorieGoal:Number($("calorieGoal").value)||1900,
-    dailyBurn:Number($("dailyBurn").value)||2300
+    dailyBurn:Number(state.goals.dailyBurn)||2300,
+    bmr:Number($("bmr").value)||1540,
+    activityBurn:Number($("activityBurn").value)||550
   };
   state.ai={endpoint:String($("aiEndpoint").value||"").trim().replace(/\/$/,"")};
   state.configured=true;save();renderToday();toast("設定を保存しました");
@@ -590,12 +716,12 @@ $("exportBtn").onclick=()=>{
   downloadBlob(JSON.stringify(state,null,2),"application/json",`gym-note-backup-${todayKey()}.json`);
 };
 $("csvBtn").onclick=()=>{
-  const rows=[["日時","種目","重量kg","回数","セット数","感覚","ZERO-i数","有酸素","有酸素分","メモ"]];
+  const rows=[["日時","種目","重量kg","回数","セット数","感覚","ZERO-i数","有酸素","有酸素分","ジム消費kcal","ジム時間分","メモ"]];
   [...state.history].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(h=>{
     (h.exercises||[]).forEach(e=>{
       rows.push([
         new Date(h.date).toLocaleString("ja-JP"),e.name,e.weight,e.reps||"",e.setsDone||"",effortLabel(e.effort),
-        h.zeroi?.length||0,h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング"):"",h.cardio?h.cardioMinutes||20:"",h.note||""
+        h.zeroi?.length||0,h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング"):"",h.cardio?h.cardioMinutes||20:"",Math.round(historyGymBurn(h)),h.durationMinutes||"",h.note||""
       ]);
     });
   });
@@ -641,5 +767,12 @@ window.addEventListener("resize",()=>{
   if($("body").classList.contains("active"))drawBodyChart();
 });
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")saveSession()});
+
+setInterval(()=>{
+  if($("today")?.classList.contains("active") && session.workoutStartedAt){
+    renderWorkoutTracker();quickStats();updateProgress();
+  }
+  if($("food")?.classList.contains("active"))renderFood();
+},30000);
 
 renderToday();

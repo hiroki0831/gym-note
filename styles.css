@@ -16,7 +16,7 @@ h2{font-size:26px;margin:5px 0 7px}h3{margin:0 0 8px}
 .ring{width:70px;height:70px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) 0deg,#262c33 0deg);position:relative;flex:0 0 auto}.ring:after{content:"";position:absolute;width:54px;height:54px;border-radius:50%;background:var(--bg)}.ring span{position:relative;z-index:1;font-weight:800}
 .notice{background:#20281c;border:1px solid #506841;border-radius:18px;padding:15px;margin-bottom:12px}.notice p{color:#c4cebd;font-size:13px;line-height:1.5}
 .resume{background:#172118;border:1px solid #39502f;border-radius:16px;padding:12px 14px;margin-bottom:12px}.resume strong,.resume small{display:block}.resume small{color:var(--muted);margin-top:4px}
-.quickStats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 15px}.quickStat{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:11px 8px}.quickStat span{display:block;color:var(--muted);font-size:10px}.quickStat b{display:block;font-size:17px;margin-top:4px}
+.quickStats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:6px 0 15px}.quickStat{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:11px 8px}.quickStat span{display:block;color:var(--muted);font-size:10px}.quickStat b{display:block;font-size:17px;margin-top:4px}
 .section-title{display:flex;align-items:end;justify-content:space-between;margin:22px 3px 9px}.section-title h3{margin:0;font-size:18px}.section-title span{font-size:11px;color:var(--muted)}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:9px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px}.row strong,.exerciseTitle strong{display:block}.row small,.exerciseTitle small{display:block;color:var(--muted);margin-top:4px;line-height:1.35}
@@ -48,7 +48,7 @@ nav{position:fixed;bottom:0;left:0;right:0;height:72px;padding-bottom:env(safe-a
 
 /* v5: food / calorie */
 .foodDateCard{padding:10px 14px}.foodDateCard label{margin:0}
-.foodStats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:9px}
+.foodStats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px}
 .foodStat{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:12px 8px;text-align:center}
 .foodStat span{display:block;color:var(--muted);font-size:10px}.foodStat b{display:block;font-size:19px;margin-top:4px}.foodStat b.good{color:var(--accent)}
 .calorieProgressCard{padding:13px 14px}.calorieProgressHead{display:flex;justify-content:space-between;align-items:center;font-size:12px}.calorieProgressHead b{font-size:17px}
@@ -61,3 +61,18 @@ nav{position:fixed;bottom:0;left:0;right:0;height:72px;padding-bottom:env(safe-a
 .foodEntry{padding:13px 14px}.foodEntryTop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.foodEntryTop .meta b,.foodEntryTop .meta small{display:block}.foodEntryTop .meta small{color:var(--muted);margin-top:3px}.foodEntryTop .kcal{text-align:right;white-space:nowrap}.foodEntryTop .kcal b{font-size:18px}.foodEntryTop .kcal small{display:block;color:var(--muted)}.foodEntryRaw{font-size:12px;color:var(--muted);margin:9px 0 0;line-height:1.45}.foodEntryDetails{margin-top:9px;border-top:1px solid #ffffff0b;padding-top:7px}.foodEntryDetails div{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);padding:3px 0}.foodEntryActions{display:flex;justify-content:flex-end;margin-top:8px}.foodEntryActions button{padding:6px 9px;font-size:10px}
 .aiLoading{display:flex;gap:9px;align-items:center;color:var(--muted);font-size:12px}.aiDot{width:9px;height:9px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite alternate}@keyframes pulse{from{opacity:.25;transform:scale(.8)}to{opacity:1;transform:scale(1.15)}}
 @media(max-width:390px){.foodStat b{font-size:16px}.foodActionGrid{grid-template-columns:1fr 1fr}.nav{font-size:17px}.nav span{font-size:9px}}
+
+/* v5.2 消費カロリー */
+.gymQuick{border-color:#4b6940;background:linear-gradient(180deg,#1f2d1d,#182019)}
+.burnTracker{border-color:#3d5137;background:linear-gradient(180deg,#20291f,#171d18)}
+.burnTrackerTop{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px}
+.burnTrackerTop strong{display:block;font-size:28px;line-height:1.1;margin-top:3px;color:var(--accent)}
+.burnTrackerTime{text-align:right}.burnTrackerTime span{display:block;color:var(--muted);font-size:10px}.burnTrackerTime b{font-size:18px}
+.burnBreakdown{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:10px 0}
+.burnBreakdown span{background:#121712;border:1px solid #2d3b2b;border-radius:10px;padding:8px 6px;font-size:10px;color:var(--muted)}
+.burnBreakdown b{display:block;color:var(--text);font-size:13px;margin-top:3px}
+.gymBurnStat{border-color:#46613e;background:linear-gradient(180deg,#21301e,#182019)}
+.totalBurnLine{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:5px 0 8px}.totalBurnLine span{font-size:12px}.totalBurnLine b{font-size:23px;color:var(--accent)}
+.balanceLine{font-size:13px;margin-bottom:5px}.balanceLine b{font-size:16px;color:var(--text)}.balanceLine span,.macroText{color:var(--muted);font-size:11px}
+.burnHistoryRow{border-top:1px solid #36422f;margin-top:5px;padding-top:8px}.burnHistoryRow b{color:var(--accent)!important}
+@media(max-width:390px){.burnBreakdown{grid-template-columns:1fr}.burnTrackerTop strong{font-size:24px}}
