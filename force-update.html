@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ジムノート 更新リセット</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;background:#111418;color:#f4f6f8;margin:0;padding:24px}
+.card{max-width:520px;margin:40px auto;background:#1c2128;border-radius:18px;padding:24px}
+h1{font-size:22px;margin-top:0}
+p{line-height:1.7;color:#cbd3dc}
+button{width:100%;padding:14px;border:0;border-radius:12px;font-weight:700;font-size:16px;background:#6ee7b7;color:#102018}
+#status{margin-top:16px;white-space:pre-wrap;color:#9fd8ff}
+small{display:block;margin-top:16px;color:#89939e}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>ジムノート 更新リセット</h1>
+<p>古いPWAキャッシュとService Workerだけを解除します。体重・履歴・食事・設定などの <b>localStorageデータは削除しません</b>。</p>
+<button id="run">更新をやり直す</button>
+<div id="status"></div>
+<small>処理後、自動でジムノートを開き直します。</small>
+</div>
+<script>
+const status = document.getElementById("status");
+async function resetGymNote(){
+  try{
+    status.textContent = "更新準備中…";
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      let n = 0;
+      for (const reg of regs) {
+        if (reg.scope.includes("/gym-note/")) {
+          await reg.unregister();
+          n++;
+        }
+      }
+      status.textContent = `Service Worker解除: ${n}件\n`;
+    }
+
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      let d = 0;
+      for (const key of keys) {
+        if (key.toLowerCase().includes("gym-note")) {
+          await caches.delete(key);
+          d++;
+        }
+      }
+      status.textContent += `ジムノート用キャッシュ削除: ${d}件\n`;
+    }
+
+    status.textContent += "端末内の履歴データは残しています。\n最新版を開きます…";
+    setTimeout(() => {
+      location.replace("./?force=" + Date.now());
+    }, 1200);
+  }catch(err){
+    status.textContent = "処理中にエラー: " + (err?.message || err);
+  }
+}
+document.getElementById("run").addEventListener("click", resetGymNote);
+</script>
+</body>
+</html>
