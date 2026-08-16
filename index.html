@@ -14,7 +14,7 @@
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v4</b></h1></div>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v5 AI食事</b></h1></div>
   <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
@@ -85,6 +85,63 @@
 
   <button id="saveWorkout" class="primary full save">今日のトレーニングを保存</button>
   <p class="caution">痛みが出た種目は中止。フォームを崩してまで重量・回数を合わせないでください。</p>
+</section>
+
+
+<section id="food" class="page">
+  <div class="heading">
+    <small>FOOD / CALORIE</small>
+    <h2>食事・カロリー</h2>
+    <p>食べたものをそのまま書いて、AIに送るだけ。</p>
+  </div>
+
+  <div class="card form foodDateCard">
+    <label>記録する日<input id="foodDate" type="date"></label>
+  </div>
+
+  <div id="foodStats" class="foodStats"></div>
+  <div class="card calorieProgressCard">
+    <div class="calorieProgressHead"><span>摂取目標まで</span><b id="foodRemaining">—</b></div>
+    <div class="calorieTrack"><div id="calorieFill" class="calorieFill"></div></div>
+    <div id="foodBalance" class="foodBalance muted"></div>
+  </div>
+
+  <div class="card foodInputCard">
+    <div class="foodInputHead">
+      <label>区分
+        <select id="foodMeal">
+          <option value="breakfast">朝食</option>
+          <option value="lunch">昼食</option>
+          <option value="dinner" selected>夕食</option>
+          <option value="snack">間食</option>
+        </select>
+      </label>
+    </div>
+    <label class="foodTextLabel">食べたもの
+      <textarea id="foodText" rows="4" placeholder="例：うどん、卵、納豆\n例：セブンの金のボロネーゼ 1個"></textarea>
+    </label>
+    <div class="foodActionGrid">
+      <button id="voiceFood" class="sub">🎤 音声入力</button>
+      <button id="analyzeFood" class="primary">✨ AIに送る</button>
+    </div>
+    <p id="aiConnectionHint" class="tiny muted"></p>
+  </div>
+
+  <div id="foodPreview"></div>
+
+  <details class="card manualFood">
+    <summary>AIを使わず手動で記録</summary>
+    <div class="manualFoodBody">
+      <label>内容<input id="manualFoodName" type="text" placeholder="例：プロテイン"></label>
+      <label>カロリー kcal<input id="manualFoodKcal" type="number" inputmode="numeric" min="0" step="1" placeholder="120"></label>
+      <button id="manualFoodSave" class="sub full">手動で追加</button>
+    </div>
+  </details>
+
+  <div class="section-title"><h3>この日の記録</h3><span id="foodCountText"></span></div>
+  <div id="foodTodayList"></div>
+
+  <button id="foodCsvBtn" class="sub full">食事履歴をCSVで書き出す</button>
 </section>
 
 <section id="history" class="page">
@@ -161,6 +218,22 @@
     <button id="saveSettings" class="primary full">設定を保存</button>
   </div>
 
+  <div class="card form">
+    <h3>カロリー設定</h3>
+    <div class="grid2">
+      <label>1日の摂取目標 kcal<input id="calorieGoal" type="number" min="1000" max="5000" step="50"></label>
+      <label>1日の消費目安 kcal<input id="dailyBurn" type="number" min="1000" max="6000" step="50"></label>
+    </div>
+    <p class="muted tiny">初期値は摂取1,900 kcal / 消費2,300 kcal。あとでいつでも変更できます。</p>
+  </div>
+
+  <div class="card form">
+    <h3>AI食事解析</h3>
+    <label>AI API URL<input id="aiEndpoint" type="url" inputmode="url" placeholder="https://xxxx.workers.dev"></label>
+    <p class="muted tiny">OpenAI APIキーはこのアプリには保存しません。AI API側に安全に保管します。初回送信時だけ接続PINを入力します。</p>
+    <button id="clearAiPin" class="sub full">この端末のAI接続PINを消す</button>
+  </div>
+
   <div class="card">
     <h3>データ</h3>
     <p class="muted">身体データと履歴はこの端末内に保存されます。v3のデータも自動で引き継ぎます。</p>
@@ -182,6 +255,7 @@
 
 <nav>
   <button class="nav active" data-page="today">🏋️<span>今日</span></button>
+  <button class="nav" data-page="food">🍽️<span>食事</span></button>
   <button class="nav" data-page="history">🗓️<span>履歴</span></button>
   <button class="nav" data-page="body">📈<span>からだ</span></button>
   <button class="nav" data-page="settings">⚙️<span>設定</span></button>

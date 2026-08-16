@@ -1,11 +1,11 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
-const VERSION=4;
+const VERSION=5;
 
 const TEMPLATE={
-  dataVersion:4,
+  dataVersion:5,
   configured:false,
-  goals:{weight:null,fat:null,muscle:null,restSeconds:60},
+  goals:{weight:null,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300},
   zeroi:[
     {id:"shoulder_elevation",name:"Shoulder Elevation",jp:"ショルダー・エレベーション",target:"背中上部・肩まわり",reps:10,icon:"🙆"},
     {id:"chest_extension",name:"Chest Extension",jp:"チェスト・エクステンション",target:"胸部・肩",reps:10,icon:"🫸"},
@@ -22,7 +22,9 @@ const TEMPLATE={
     {id:"abs",name:"アブドミナルクランチ",icon:"🔥",weight:17.5,reps:12,sets:2,step:2.5,note:"腹筋。首ではなく腹を丸める。"}
   ],
   body:[],
-  history:[]
+  history:[],
+  foods:[],
+  ai:{endpoint:""}
 };
 
 const $=id=>document.getElementById(id);
@@ -42,6 +44,8 @@ function migrate(x){
   s.zeroi=x.zeroi?.length?x.zeroi:clone(TEMPLATE.zeroi);
   s.exercises=x.exercises?.length?x.exercises:clone(TEMPLATE.exercises);
   s.body=Array.isArray(x.body)?x.body:[];
+  s.foods=Array.isArray(x.foods)?x.foods:[];
+  s.ai=Object.assign({},TEMPLATE.ai,x.ai||{});
   s.history=Array.isArray(x.history)?x.history.map(h=>{
     const hh=Object.assign({zeroi:[],note:"",cardioMinutes:h.cardio?20:0},h);
     hh.exercises=Array.isArray(h.exercises)?h.exercises.map(e=>Object.assign({
@@ -112,6 +116,7 @@ function page(id){
   document.querySelectorAll(".page").forEach(x=>x.classList.toggle("active",x.id===id));
   document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.page===id));
   window.scrollTo(0,0);
+  if(id==="food")renderFood();
   if(id==="history")renderHistory();
   if(id==="body")renderBody();
   if(id==="settings")renderSettings();
@@ -306,6 +311,126 @@ $("saveWorkout").onclick=()=>{
   renderToday();toast("今日のトレーニングを保存しました");
 };
 
+
+// ---------- 食事・カロリー v5 ----------
+let foodPreviewData=null;
+const mealLabel=v=>({breakfast:"朝食",lunch:"昼食",dinner:"夕食",snack:"間食"}[v]||"食事");
+function foodDay(entry){return String(entry.day||entry.date||"").slice(0,10)}
+function selectedFoodDay(){return $("foodDate")?.value||todayKey()}
+function foodsForDay(day=selectedFoodDay()){
+  return (state.foods||[]).filter(x=>foodDay(x)===day).sort((a,b)=>new Date(b.createdAt||b.date||0)-new Date(a.createdAt||a.date||0));
+}
+function foodTotals(rows){
+  return rows.reduce((a,x)=>({
+    kcal:a.kcal+Number(x.kcal||0),protein:a.protein+Number(x.protein||0),fat:a.fat+Number(x.fat||0),carbs:a.carbs+Number(x.carbs||0)
+  }),{kcal:0,protein:0,fat:0,carbs:0});
+}
+function renderFood(){
+  if(!$("foodDate").value)$("foodDate").value=todayKey();
+  const day=selectedFoodDay(),rows=foodsForDay(day),t=foodTotals(rows);
+  const goal=Number(state.goals.calorieGoal)||1900,burn=Number(state.goals.dailyBurn)||2300;
+  const remaining=goal-t.kcal,balance=burn-t.kcal,pct=Math.max(0,Math.min(100,(t.kcal/goal)*100));
+  $("foodStats").innerHTML=`
+    <div class="foodStat"><span>摂取</span><b>${Math.round(t.kcal)} kcal</b></div>
+    <div class="foodStat"><span>目標</span><b>${Math.round(goal)} kcal</b></div>
+    <div class="foodStat"><span>消費目安</span><b>${Math.round(burn)} kcal</b></div>`;
+  $("foodRemaining").textContent=remaining>=0?`あと ${Math.round(remaining)} kcal`:`${Math.round(Math.abs(remaining))} kcal 超過`;
+  $("calorieFill").style.width=pct+"%";$("calorieFill").classList.toggle("over",remaining<0);
+  $("foodBalance").textContent=`消費目安との差：${balance>=0?"−":"＋"}${Math.abs(Math.round(balance))} kcal ／ P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g`;
+  $("foodCountText").textContent=`${rows.length}件`;
+  $("aiConnectionHint").textContent=state.ai?.endpoint?"AI接続済み。APIキーはスマホ側に保存しません。":"AI未接続：設定 → AI食事解析 にAPI URLを入れると使えます。";
+  $("foodTodayList").innerHTML=rows.length?rows.map(x=>{
+    const items=Array.isArray(x.items)?x.items:[];
+    return `<div class="card foodEntry">
+      <div class="foodEntryTop">
+        <div class="meta"><b>${mealLabel(x.meal)}・${escapeHtml(x.title||x.rawText||"食事")}</b><small>${x.createdAt?timeLabel(x.createdAt):""} ${x.source==="ai"?"/ AI推定":"/ 手動"}</small></div>
+        <div class="kcal"><b>${Math.round(Number(x.kcal||0))}</b><small>kcal</small></div>
+      </div>
+      ${x.rawText&&x.rawText!==x.title?`<p class="foodEntryRaw">${escapeHtml(x.rawText)}</p>`:""}
+      ${items.length?`<div class="foodEntryDetails">${items.map(i=>`<div><span>${escapeHtml(i.name||"")} ${escapeHtml(i.amount||"")}</span><b>${Math.round(Number(i.kcal||0))} kcal</b></div>`).join("")}</div>`:""}
+      <div class="macroLine"><span>P <b>${Math.round(Number(x.protein||0))}g</b></span><span>F <b>${Math.round(Number(x.fat||0))}g</b></span><span>C <b>${Math.round(Number(x.carbs||0))}g</b></span></div>
+      <div class="foodEntryActions"><button class="danger" data-delfood="${x.id}">削除</button></div>
+    </div>`;
+  }).join(""):`<div class="card muted">この日の食事記録はまだありません。</div>`;
+  document.querySelectorAll("[data-delfood]").forEach(b=>b.onclick=()=>{
+    if(!confirm("この食事記録を削除しますか？"))return;
+    state.foods=state.foods.filter(x=>String(x.id)!==String(b.dataset.delfood));save();renderFood();toast("食事記録を削除しました");
+  });
+  renderFoodPreview();
+}
+function normalizeAiResult(x){
+  const items=Array.isArray(x?.items)?x.items.map(i=>({name:String(i.name||"食品"),amount:String(i.amount||""),kcal:Number(i.kcal||0)})):[];
+  return {
+    title:String(x?.title||items.map(i=>i.name).join("、")||$("foodText").value||"食事"),
+    items,
+    kcal:Number(x?.total_kcal??x?.kcal??items.reduce((a,i)=>a+i.kcal,0))||0,
+    protein:Number(x?.protein_g??x?.protein??0)||0,
+    fat:Number(x?.fat_g??x?.fat??0)||0,
+    carbs:Number(x?.carbs_g??x?.carbs??0)||0,
+    confidence:String(x?.confidence||"medium"),
+    note:String(x?.note||"")
+  };
+}
+function renderFoodPreview(){
+  if(!foodPreviewData){$("foodPreview").innerHTML="";return}
+  const x=foodPreviewData;
+  $("foodPreview").innerHTML=`<div class="card foodPreviewCard">
+    <div class="foodPreviewTitle"><strong>AIの推定結果</strong><b>${Math.round(x.kcal)} kcal</b></div>
+    <div class="foodPreviewItems">${x.items.map(i=>`<div class="foodPreviewItem"><span>${escapeHtml(i.name)} ${escapeHtml(i.amount)}</span><b>${Math.round(i.kcal)} kcal</b></div>`).join("")}</div>
+    <div class="macroLine"><span>P <b>${Math.round(x.protein)}g</b></span><span>F <b>${Math.round(x.fat)}g</b></span><span>C <b>${Math.round(x.carbs)}g</b></span><span>確度 <b>${escapeHtml(x.confidence)}</b></span></div>
+    ${x.note?`<p class="tiny muted">${escapeHtml(x.note)}</p>`:""}
+    <div class="previewKcalEdit"><label>合計は修正できます</label><div><input id="previewKcal" type="number" min="0" step="1" value="${Math.round(x.kcal)}"> kcal</div></div>
+    <div class="previewActions"><button id="cancelFoodPreview" class="sub">やめる</button><button id="saveFoodPreview" class="primary">この内容で記録</button></div>
+  </div>`;
+  $("cancelFoodPreview").onclick=()=>{foodPreviewData=null;renderFoodPreview()};
+  $("saveFoodPreview").onclick=()=>{
+    const raw=String($("foodText").value||"").trim();
+    const rec={id:Date.now(),day:selectedFoodDay(),createdAt:new Date().toISOString(),meal:$("foodMeal").value,rawText:raw,title:x.title,items:x.items,kcal:Number($("previewKcal").value)||0,protein:x.protein,fat:x.fat,carbs:x.carbs,source:"ai"};
+    state.foods.unshift(rec);save();foodPreviewData=null;$("foodText").value="";renderFood();toast("食事を記録しました");
+  };
+}
+async function analyzeFood(){
+  const text=String($("foodText").value||"").trim();
+  if(!text){toast("食べたものを入力してください");return}
+  const endpoint=String(state.ai?.endpoint||"").trim();
+  if(!endpoint){toast("設定でAI API URLを登録してください");page("settings");return}
+  let pin=sessionStorage.getItem("gym_note_ai_pin")||"";
+  if(!pin){pin=prompt("AI接続PINを入力してください")||"";if(!pin)return;sessionStorage.setItem("gym_note_ai_pin",pin)}
+  $("foodPreview").innerHTML='<div class="card aiLoading"><span class="aiDot"></span><span>AIがカロリーを計算しています…</span></div>';
+  $("analyzeFood").disabled=true;
+  try{
+    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json","X-App-Pin":pin},body:JSON.stringify({text,meal:mealLabel($("foodMeal").value)})});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);
+    foodPreviewData=normalizeAiResult(data);renderFoodPreview();
+  }catch(err){
+    if(String(err.message).includes("PIN")){sessionStorage.removeItem("gym_note_ai_pin")}
+    foodPreviewData=null;$("foodPreview").innerHTML=`<div class="card"><b>AI送信に失敗しました</b><p class="muted tiny">${escapeHtml(err.message||"接続を確認してください")}</p></div>`;
+  }finally{$("analyzeFood").disabled=false}
+}
+$("analyzeFood").onclick=analyzeFood;
+$("foodDate").onchange=()=>{foodPreviewData=null;renderFood()};
+$("manualFoodSave").onclick=()=>{
+  const name=String($("manualFoodName").value||"").trim(),kcal=Number($("manualFoodKcal").value);
+  if(!name||!Number.isFinite(kcal)||kcal<0){toast("内容とカロリーを入力してください");return}
+  state.foods.unshift({id:Date.now(),day:selectedFoodDay(),createdAt:new Date().toISOString(),meal:$("foodMeal").value,rawText:name,title:name,items:[],kcal,protein:0,fat:0,carbs:0,source:"manual"});
+  save();$("manualFoodName").value="";$("manualFoodKcal").value="";renderFood();toast("手動で食事を追加しました");
+};
+$("foodCsvBtn").onclick=()=>{
+  const rows=[["日付","時刻","区分","内容","kcal","たんぱく質g","脂質g","炭水化物g","入力方法"]];
+  [...(state.foods||[])].sort((a,b)=>new Date(a.createdAt||a.day)-new Date(b.createdAt||b.day)).forEach(x=>rows.push([foodDay(x),x.createdAt?timeLabel(x.createdAt):"",mealLabel(x.meal),x.rawText||x.title||"",x.kcal||0,x.protein||0,x.fat||0,x.carbs||0,x.source==="ai"?"AI":"手動"]));
+  const csv="\uFEFF"+rows.map(r=>r.map(csvCell).join(",")).join("\r\n");downloadBlob(csv,"text/csv;charset=utf-8",`gym-note-food-${todayKey()}.csv`);
+};
+(function setupFoodVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){$("voiceFood").disabled=true;$("voiceFood").textContent="🎤 音声非対応";return}
+  const rec=new SR();rec.lang="ja-JP";rec.interimResults=false;rec.maxAlternatives=1;
+  $("voiceFood").onclick=()=>{try{$("voiceFood").textContent="🎤 聞いています…";rec.start()}catch(e){}};
+  rec.onresult=e=>{const t=e.results?.[0]?.[0]?.transcript||"";$("foodText").value=($("foodText").value.trim()?$("foodText").value.trim()+"、":"")+t};
+  rec.onend=()=>{$("voiceFood").textContent="🎤 音声入力"};
+  rec.onerror=()=>{$("voiceFood").textContent="🎤 音声入力";toast("音声入力を使えませんでした")};
+})();
+
 function monthOptions(){
   const months=new Set([localYM(new Date().toISOString())]);
   state.history.forEach(h=>months.add(localYM(h.date)));
@@ -443,16 +568,23 @@ function renderSettings(){
   $("goalFat").value=state.goals.fat??"";
   $("goalMuscle").value=state.goals.muscle??"";
   $("restSec").value=state.goals.restSeconds||60;
+  $("calorieGoal").value=state.goals.calorieGoal||1900;
+  $("dailyBurn").value=state.goals.dailyBurn||2300;
+  $("aiEndpoint").value=state.ai?.endpoint||"";
 }
 $("saveSettings").onclick=()=>{
   state.goals={
     weight:$("goalWeight").value?Number($("goalWeight").value):null,
     fat:$("goalFat").value?Number($("goalFat").value):null,
     muscle:$("goalMuscle").value?Number($("goalMuscle").value):null,
-    restSeconds:Number($("restSec").value)||60
+    restSeconds:Number($("restSec").value)||60,
+    calorieGoal:Number($("calorieGoal").value)||1900,
+    dailyBurn:Number($("dailyBurn").value)||2300
   };
+  state.ai={endpoint:String($("aiEndpoint").value||"").trim().replace(/\/$/,"")};
   state.configured=true;save();renderToday();toast("設定を保存しました");
 };
+$("clearAiPin").onclick=()=>{sessionStorage.removeItem("gym_note_ai_pin");toast("AI接続PINを消しました")};
 
 $("exportBtn").onclick=()=>{
   downloadBlob(JSON.stringify(state,null,2),"application/json",`gym-note-backup-${todayKey()}.json`);
