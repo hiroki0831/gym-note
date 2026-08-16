@@ -1,5 +1,5 @@
-const CACHE="gym-note-v5-2-1-pin";
-const CORE=["./","./index.html","./styles.css","./app.js","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
+const CACHE="gym-note-v5-2-2-pinfix";
+const CORE=["./","./index.html","./styles.css","./app.js?v=522","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)))});
 self.addEventListener("activate",e=>e.waitUntil(Promise.all([
   self.clients.claim(),

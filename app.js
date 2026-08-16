@@ -1,9 +1,10 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
-const VERSION=6;
+const AI_PIN_KEY="gym_note_ai_pin";
+const VERSION=7;
 
 const TEMPLATE={
-  dataVersion:6,
+  dataVersion:7,
   configured:false,
   goals:{weight:null,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1540,activityBurn:550},
   zeroi:[
@@ -478,6 +479,30 @@ function renderFood(){
   });
   renderFoodPreview();
 }
+function getSavedAiPin(){
+  try{return String(localStorage.getItem(AI_PIN_KEY)||"")}catch(e){return ""}
+}
+function saveAiPinLocal(pin){
+  const v=String(pin||"").trim();
+  if(!v)return false;
+  try{
+    localStorage.setItem(AI_PIN_KEY,v);
+    // Android/PWAで可能なら保存領域を永続化。未対応でも問題なし。
+    if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+    return localStorage.getItem(AI_PIN_KEY)===v;
+  }catch(e){return false}
+}
+function clearAiPinLocal(){
+  try{localStorage.removeItem(AI_PIN_KEY)}catch(e){}
+  try{sessionStorage.removeItem(AI_PIN_KEY)}catch(e){}
+}
+function updateAiPinStatus(){
+  const el=$("aiPinStatus");
+  if(!el)return;
+  const saved=!!getSavedAiPin();
+  el.textContent=saved?"✅ この端末にPIN保存済み":"未保存（最初のAI送信時にも入力できます）";
+}
+
 function normalizeAiResult(x){
   const items=Array.isArray(x?.items)?x.items.map(i=>({name:String(i.name||"食品"),amount:String(i.amount||""),kcal:Number(i.kcal||0)})):[];
   return {
@@ -514,27 +539,37 @@ async function analyzeFood(){
   if(!text){toast("食べたものを入力してください");return}
   const endpoint=String(state.ai?.endpoint||"").trim();
   if(!endpoint){toast("設定でAI API URLを登録してください");page("settings");return}
-  const AI_PIN_KEY="gym_note_ai_pin";
-  // v5.2以前の一時保存PINが残っていれば、この端末の永続保存へ移行する。
-  let pin=localStorage.getItem(AI_PIN_KEY)||sessionStorage.getItem(AI_PIN_KEY)||"";
-  if(pin && !localStorage.getItem(AI_PIN_KEY)){
-    localStorage.setItem(AI_PIN_KEY,pin);
-    sessionStorage.removeItem(AI_PIN_KEY);
+  // 旧版のsessionStorage PINがあれば1回だけ移行。
+  let pin=getSavedAiPin();
+  if(!pin){
+    try{
+      const oldPin=String(sessionStorage.getItem(AI_PIN_KEY)||"");
+      if(oldPin&&saveAiPinLocal(oldPin)){pin=oldPin;sessionStorage.removeItem(AI_PIN_KEY)}
+    }catch(e){}
   }
   if(!pin){
-    pin=prompt("AI接続PINを入力してください（この端末に保存します）")||"";
+    pin=(prompt("AI接続PINを入力してください（この端末に保存します）")||"").trim();
     if(!pin)return;
-    localStorage.setItem(AI_PIN_KEY,pin);
+    if(!saveAiPinLocal(pin)){toast("PINを端末に保存できませんでした");return}
+    updateAiPinStatus();
   }
   $("foodPreview").innerHTML='<div class="card aiLoading"><span class="aiDot"></span><span>AIがカロリーを計算しています…</span></div>';
   $("analyzeFood").disabled=true;
   try{
     const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({pin,text,meal:mealLabel($("foodMeal").value)})});
     const data=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);
+    if(!r.ok){
+      const er=new Error(data.error||`HTTP ${r.status}`);
+      er.status=r.status;
+      throw er;
+    }
+    // 通信成功時にもPINを再保存して、端末保存を確実にする。
+    saveAiPinLocal(pin);
+    updateAiPinStatus();
     foodPreviewData=normalizeAiResult(data);renderFoodPreview();
   }catch(err){
-    if(String(err.message).includes("PIN")){localStorage.removeItem("gym_note_ai_pin");sessionStorage.removeItem("gym_note_ai_pin")}
+    // PINそのものが不正な401のときだけ消す。ほかのAPIエラーでは保存PINを維持する。
+    if(Number(err.status)===401){clearAiPinLocal();updateAiPinStatus()}
     foodPreviewData=null;$("foodPreview").innerHTML=`<div class="card"><b>AI送信に失敗しました</b><p class="muted tiny">${escapeHtml(err.message||"接続を確認してください")}</p></div>`;
   }finally{$("analyzeFood").disabled=false}
 }
@@ -705,6 +740,8 @@ function renderSettings(){
   $("bmr").value=state.goals.bmr||1540;
   $("activityBurn").value=state.goals.activityBurn||550;
   $("aiEndpoint").value=state.ai?.endpoint||"";
+  if($("aiPin")) $("aiPin").value="";
+  updateAiPinStatus();
 }
 $("saveSettings").onclick=()=>{
   state.goals={
@@ -720,7 +757,13 @@ $("saveSettings").onclick=()=>{
   state.ai={endpoint:String($("aiEndpoint").value||"").trim().replace(/\/$/,"")};
   state.configured=true;save();renderToday();toast("設定を保存しました");
 };
-$("clearAiPin").onclick=()=>{localStorage.removeItem("gym_note_ai_pin");sessionStorage.removeItem("gym_note_ai_pin");toast("この端末に保存したAI接続PINを消しました")};
+$("saveAiPin").onclick=()=>{
+  const pin=String($("aiPin").value||"").trim();
+  if(!pin){toast("PINを入力してください");return}
+  if(saveAiPinLocal(pin)){$("aiPin").value="";updateAiPinStatus();toast("AI接続PINをこの端末に保存しました")}
+  else toast("PINを保存できませんでした");
+};
+$("clearAiPin").onclick=()=>{clearAiPinLocal();$("aiPin").value="";updateAiPinStatus();toast("この端末に保存したAI接続PINを消しました")};
 
 $("exportBtn").onclick=()=>{
   downloadBlob(JSON.stringify(state,null,2),"application/json",`gym-note-backup-${todayKey()}.json`);
