@@ -14,7 +14,7 @@
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.2.2 AI食事・消費</b></h1></div>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.2.3 AI食事・消費</b></h1></div>
   <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
@@ -236,7 +236,7 @@
     <label>AI接続PIN（この端末だけ）<input id="aiPin" type="password" inputmode="text" autocomplete="off" placeholder="PINを入力"></label>
     <button id="saveAiPin" class="primary full">PINをこの端末に保存</button>
     <p id="aiPinStatus" class="muted tiny">PIN保存状態を確認中…</p>
-    <p class="muted tiny">OpenAI APIキーはこのアプリには保存しません。PINはこの端末のブラウザ保存領域に記録し、通常は再入力不要です。</p>
+    <p class="muted tiny">OpenAI APIキーはこのアプリには保存しません。PINは体重・履歴などと同じアプリ保存領域にも記録し、通常は再入力不要です。</p>
     <button id="clearAiPin" class="sub full">保存したPINを消す</button>
   </div>
 
@@ -253,7 +253,7 @@
 
   <div class="card">
     <h3>アプリ</h3>
-    <p class="muted">PWA版 v5.2.2。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
+    <p class="muted">PWA版 v5.2.3。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
     <button id="checkUpdate" class="sub full">更新を確認</button>
   </div>
 </section>
@@ -270,6 +270,6 @@
 <div id="timer" class="timer hidden">休憩 <b id="timerN">60</b> 秒 <button id="timerX">×</button></div>
 <div id="toast" class="toast"></div>
 
-<script src="./app.js?v=522"></script>
+<script src="./app.js?v=523"></script>
 </body>
 </html>
