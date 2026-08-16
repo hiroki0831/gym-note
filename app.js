@@ -514,8 +514,18 @@ async function analyzeFood(){
   if(!text){toast("食べたものを入力してください");return}
   const endpoint=String(state.ai?.endpoint||"").trim();
   if(!endpoint){toast("設定でAI API URLを登録してください");page("settings");return}
-  let pin=sessionStorage.getItem("gym_note_ai_pin")||"";
-  if(!pin){pin=prompt("AI接続PINを入力してください")||"";if(!pin)return;sessionStorage.setItem("gym_note_ai_pin",pin)}
+  const AI_PIN_KEY="gym_note_ai_pin";
+  // v5.2以前の一時保存PINが残っていれば、この端末の永続保存へ移行する。
+  let pin=localStorage.getItem(AI_PIN_KEY)||sessionStorage.getItem(AI_PIN_KEY)||"";
+  if(pin && !localStorage.getItem(AI_PIN_KEY)){
+    localStorage.setItem(AI_PIN_KEY,pin);
+    sessionStorage.removeItem(AI_PIN_KEY);
+  }
+  if(!pin){
+    pin=prompt("AI接続PINを入力してください（この端末に保存します）")||"";
+    if(!pin)return;
+    localStorage.setItem(AI_PIN_KEY,pin);
+  }
   $("foodPreview").innerHTML='<div class="card aiLoading"><span class="aiDot"></span><span>AIがカロリーを計算しています…</span></div>';
   $("analyzeFood").disabled=true;
   try{
@@ -524,7 +534,7 @@ async function analyzeFood(){
     if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);
     foodPreviewData=normalizeAiResult(data);renderFoodPreview();
   }catch(err){
-    if(String(err.message).includes("PIN")){sessionStorage.removeItem("gym_note_ai_pin")}
+    if(String(err.message).includes("PIN")){localStorage.removeItem("gym_note_ai_pin");sessionStorage.removeItem("gym_note_ai_pin")}
     foodPreviewData=null;$("foodPreview").innerHTML=`<div class="card"><b>AI送信に失敗しました</b><p class="muted tiny">${escapeHtml(err.message||"接続を確認してください")}</p></div>`;
   }finally{$("analyzeFood").disabled=false}
 }
@@ -710,7 +720,7 @@ $("saveSettings").onclick=()=>{
   state.ai={endpoint:String($("aiEndpoint").value||"").trim().replace(/\/$/,"")};
   state.configured=true;save();renderToday();toast("設定を保存しました");
 };
-$("clearAiPin").onclick=()=>{sessionStorage.removeItem("gym_note_ai_pin");toast("AI接続PINを消しました")};
+$("clearAiPin").onclick=()=>{localStorage.removeItem("gym_note_ai_pin");sessionStorage.removeItem("gym_note_ai_pin");toast("この端末に保存したAI接続PINを消しました")};
 
 $("exportBtn").onclick=()=>{
   downloadBlob(JSON.stringify(state,null,2),"application/json",`gym-note-backup-${todayKey()}.json`);
