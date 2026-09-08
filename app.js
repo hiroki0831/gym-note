@@ -1,10 +1,10 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
 const AI_PIN_KEY="gym_note_ai_pin";
-const VERSION=8;
+const VERSION=9;
 
 const TEMPLATE={
-  dataVersion:8,
+  dataVersion:9,
   configured:false,
   goals:{weight:null,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1540,activityBurn:550},
   zeroi:[
@@ -447,7 +447,7 @@ function renderFood(){
   if(!$("foodDate").value)$("foodDate").value=todayKey();
   const day=selectedFoodDay(),rows=foodsForDay(day),t=foodTotals(rows);
   const goal=Number(state.goals.calorieGoal)||1900,burn=totalBurnForDay(day);
-  const remaining=goal-t.kcal,balance=burn.total-t.kcal,pct=Math.max(0,Math.min(100,(t.kcal/goal)*100));
+  const remaining=goal-t.kcal,balance=t.kcal-burn.total,pct=Math.max(0,Math.min(100,(t.kcal/goal)*100));
   $("foodStats").innerHTML=`
     <div class="foodStat"><span>摂取</span><b>${Math.round(t.kcal)} kcal</b></div>
     <div class="foodStat"><span>基礎代謝</span><b>${Math.round(burn.bmr)} kcal</b></div>
@@ -456,8 +456,8 @@ function renderFood(){
   $("foodRemaining").textContent=remaining>=0?`あと ${Math.round(remaining)} kcal`:`${Math.round(Math.abs(remaining))} kcal 超過`;
   $("calorieFill").style.width=pct+"%";$("calorieFill").classList.toggle("over",remaining<0);
   $("foodBalance").innerHTML=`<div class="totalBurnLine"><span>今日の総消費</span><b>${burn.total} kcal</b></div>
-    <div class="balanceLine">収支：<b>${balance>=0?"−":"＋"}${Math.abs(Math.round(balance))} kcal</b> <span>（消費 − 摂取）</span></div>
-    <div class="macroText">P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g</div>`;
+    <div class="balanceLine">収支：<b>${balance>0?"+":balance<0?"−":""}${Math.abs(Math.round(balance))} kcal</b> <span>（摂取 − 消費）</span></div>
+    <div class="macroText">${balance<0?`カロリー赤字 ${Math.abs(Math.round(balance))} kcal`:balance>0?`カロリー超過 ${Math.round(balance)} kcal`:"収支 0 kcal"} / P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g</div>`;
   $("foodCountText").textContent=`${rows.length}件`;
   $("aiConnectionHint").textContent=state.ai?.endpoint?"AI接続済み。APIキーはスマホ側に保存しません。":"AI未接続：設定 → AI食事解析 にAPI URLを入れると使えます。";
   $("foodTodayList").innerHTML=rows.length?rows.map(x=>{
@@ -618,69 +618,44 @@ $("foodCsvBtn").onclick=()=>{
   rec.onerror=()=>{$("voiceFood").textContent="🎤 音声入力";toast("音声入力を使えませんでした")};
 })();
 
-function monthOptions(){
-  const months=new Set([localYM(new Date().toISOString())]);
-  state.history.forEach(h=>months.add(localYM(h.date)));
-  return [...months].sort().reverse();
+function isoDay(iso){
+  if(!iso)return "";const d=new Date(iso);if(Number.isNaN(d.getTime()))return String(iso).slice(0,10);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
-function populateHistoryControls(){
-  const months=monthOptions();
-  const current=$("historyMonth").value;
-  $("historyMonth").innerHTML=months.map(m=>`<option value="${m}">${m.replace("-","年")}月</option>`).join("");
-  $("historyMonth").value=months.includes(current)?current:months[0];
-
-  const cur=$("strengthMetric").value;
-  $("strengthMetric").innerHTML=state.exercises.map(e=>`<option value="${e.id}">${e.name}</option>`).join("");
-  if(state.exercises.some(e=>e.id===cur))$("strengthMetric").value=cur;
+function addDays(day,delta){const [y,m,d]=String(day).split("-").map(Number),x=new Date(y,m-1,d);x.setDate(x.getDate()+Number(delta||0));return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`}
+function daysInclusive(start,end){if(!start||!end||start>end)return [];const out=[];let d=start,g=0;while(d<=end&&g<4000){out.push(d);d=addDays(d,1);g++}return out}
+function historyKnownDays(){return [...(state.history||[]).map(h=>isoDay(h.date)),...(state.foods||[]).map(f=>foodDay(f)),...(state.body||[]).map(b=>String(b.date||"").slice(0,10))].filter(Boolean).sort()}
+function defaultHistoryRange(){const end=todayKey();return {start:`${end.slice(0,8)}01`,end}}
+function normalizeHistoryRange(){if(!$("historyStart").value||!$("historyEnd").value){const x=defaultHistoryRange();$("historyStart").value=x.start;$("historyEnd").value=x.end}if($("historyStart").value>$("historyEnd").value){const x=$("historyStart").value;$("historyStart").value=$("historyEnd").value;$("historyEnd").value=x}return {start:$("historyStart").value,end:$("historyEnd").value}}
+function historyRowsInRange(){const {start,end}=normalizeHistoryRange();return (state.history||[]).filter(h=>{const d=isoDay(h.date);return d>=start&&d<=end}).sort((a,b)=>new Date(b.date)-new Date(a.date))}
+function recalcHistoryBurn(h,durationMinutes){
+  const duration=Math.max(0,Math.min(600,Number(durationMinutes)||0)),weight=Number(h?.calorieWeight)||userWeight(),cardioMin=h?.cardio?Number(h.cardioMinutes||20):0,warmupMin=h?.warmup?5:0,vibrationMin=h?.vibration?5:0,zeroiMin=(h?.zeroi?.length||0)*1.5;
+  const strengthMin=Math.max(0,duration-(cardioMin+warmupMin+vibrationMin+zeroiMin));
+  const breakdown={stretch:Math.round(metKcal(2.5,zeroiMin,weight)),strength:Math.round(metKcal(4.5,strengthMin,weight)),warmup:Math.round(metKcal(3.5,warmupMin,weight)),cardio:Math.round(metKcal(h?.cardioType==="bike"?5.5:4.8,cardioMin,weight)),vibration:Math.round(metKcal(2.0,vibrationMin,weight))};
+  return {duration,total:Object.values(breakdown).reduce((a,n)=>a+Number(n||0),0),breakdown,weight};
+}
+function historyBreakdown(h){if(h?.gymBreakdown&&Object.values(h.gymBreakdown).some(v=>Number(v)>0))return h.gymBreakdown;return recalcHistoryBurn(h,Number(h?.durationMinutes)||0).breakdown}
+function setHistoryDuration(h,minutes){const r=recalcHistoryBurn(h,minutes);h.durationMinutes=r.duration;h.gymCalories=r.total;h.gymBreakdown=r.breakdown;h.calorieWeight=r.weight;h.durationCorrected=true;const endIso=h.workoutEndedAt||h.date;if(endIso&&r.duration>0){const end=new Date(endIso);if(!Number.isNaN(end.getTime()))h.workoutStartedAt=new Date(end.getTime()-r.duration*60000).toISOString()}}
+function populateHistoryControls(){const cur=$("strengthMetric").value;$("strengthMetric").innerHTML=state.exercises.map(e=>`<option value="${e.id}">${e.name}</option>`).join("");if(state.exercises.some(e=>e.id===cur))$("strengthMetric").value=cur;normalizeHistoryRange()}
+function renderRangeCalorieSummary(){
+  const {start,end}=normalizeHistoryRange(),days=daysInclusive(start,end),recordedDays=days.filter(day=>foodsForDay(day).length>0);let intake=0,burn=0,gym=0;
+  recordedDays.forEach(day=>{intake+=foodTotals(foodsForDay(day)).kcal;const b=totalBurnForDay(day);burn+=b.total;gym+=b.gym});
+  const balance=intake-burn,avg=recordedDays.length?balance/recordedDays.length:0,sign=n=>n>0?"+":n<0?"−":"";const status=balance<0?`赤字 ${Math.abs(Math.round(balance))} kcal`:balance>0?`超過 ${Math.round(balance)} kcal`:"収支 0 kcal";
+  if(!recordedDays.length){$("rangeCalorieSummary").innerHTML=`<div class="rangeTitle"><div><span>期間のカロリー収支</span><b>${start.replaceAll("-","/")} ～ ${end.replaceAll("-","/")}</b></div><strong>—</strong></div><p>この期間には食事記録がありません。<span>食事記録がある日だけを収支集計します。</span></p>`;return}
+  $("rangeCalorieSummary").innerHTML=`<div class="rangeTitle"><div><span>期間のカロリー収支</span><b>${start.replaceAll("-","/")} ～ ${end.replaceAll("-","/")}</b></div><strong class="${balance<=0?"deficit":"surplus"}">${sign(balance)}${Math.abs(Math.round(balance))} kcal</strong></div><div class="rangeGrid"><div><span>摂取合計</span><b>${Math.round(intake)} kcal</b></div><div><span>消費合計</span><b>${Math.round(burn)} kcal</b></div><div><span>うちジム</span><b>${Math.round(gym)} kcal</b></div><div><span>1日平均収支</span><b>${sign(avg)}${Math.abs(Math.round(avg))} kcal</b></div></div><p>${status}　<span>計算：摂取 − 消費 / 食事記録あり ${recordedDays.length}日（期間 ${days.length}日）</span></p>`;
 }
 function renderHistory(){
-  populateHistoryControls();
-  const ym=$("historyMonth").value||monthOptions()[0];
-  const rows=state.history.filter(h=>localYM(h.date)===ym).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const sets=rows.reduce((a,h)=>a+(h.exercises||[]).reduce((b,e)=>b+(e.setsDone||0),0),0);
-  const cardio=rows.reduce((a,h)=>a+(h.cardio?Number(h.cardioMinutes||20):0),0);
-  const gymKcal=rows.reduce((a,h)=>a+historyGymBurn(h),0);
-
-  $("historySummary").innerHTML=`
-    <div class="card"><b>${rows.length}</b><small>この月の回数</small></div>
-    <div class="card"><b>${sets}</b><small>総セット</small></div>
-    <div class="card"><b>${cardio}</b><small>有酸素 分</small></div>
-    <div class="card"><b>🔥 ${Math.round(gymKcal)}</b><small>ジム kcal</small></div>`;
-
-  $("historyList").innerHTML=rows.length?rows.map(h=>{
-    const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0);
-    return `<details class="card historyCard">
-      <summary>
-        <div class="historySummaryRow">
-          <div class="date"><b>${dateLabel(h.date)}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${h.durationMinutes?`${h.durationMinutes}分`:(h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"時間未記録")}</small></div>
-          <span class="count">${setCount} set ▾</span>
-        </div>
-      </summary>
-      <div class="historyBody">
-        <div class="historyDetail">
-          <div><span>ZERO-i</span><b>${h.zeroi?.length||0}/4種</b></div>
-          <div><span>ウォームアップ</span><b>${h.warmup?"完了":"—"}</b></div>
-          ${(h.exercises||[]).map(e=>`<div><span>${e.name}</span><b>${fmt(e.weight)}kg × ${e.reps||10}回 × ${e.setsDone||0}set${e.effort?` / ${effortLabel(e.effort)}`:""}</b></div>`).join("")}
-          <div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div>
-          <div><span>振動マシン</span><b>${h.vibration?"完了":"—"}</b></div>
-          <div class="burnHistoryRow"><span>🔥 ジム消費</span><b>約 ${Math.round(historyGymBurn(h))} kcal</b></div>
-        </div>
-        ${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}
-        <div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div>
-      </div>
-    </details>`;
-  }).join(""):`<div class="card muted">この月のトレーニング履歴はまだありません。</div>`;
-
-  document.querySelectorAll("[data-delhistory]").forEach(b=>b.onclick=e=>{
-    e.preventDefault();e.stopPropagation();
-    if(!confirm("このトレーニング記録を削除しますか？"))return;
-    state.history=state.history.filter(h=>String(h.id)!==String(b.dataset.delhistory));
-    save();renderHistory();toast("履歴を削除しました");
-  });
-  drawStrengthChart();
+  populateHistoryControls();const rows=historyRowsInRange(),sets=rows.reduce((a,h)=>a+(h.exercises||[]).reduce((b,e)=>b+(e.setsDone||0),0),0),cardio=rows.reduce((a,h)=>a+(h.cardio?Number(h.cardioMinutes||20):0),0),gymKcal=rows.reduce((a,h)=>a+historyGymBurn(h),0),gymMinutes=rows.reduce((a,h)=>a+Number(h.durationMinutes||0),0),zeroi=rows.reduce((a,h)=>a+(h.zeroi?.length||0),0);
+  renderRangeCalorieSummary();$("historySummary").innerHTML=`<div class="card"><b>${rows.length}</b><small>ジム回数</small></div><div class="card"><b>${sets}</b><small>総セット</small></div><div class="card"><b>${gymMinutes}</b><small>滞在 分</small></div><div class="card"><b>${cardio}</b><small>有酸素 分</small></div><div class="card"><b>${zeroi}</b><small>ZERO-i 種目</small></div><div class="card"><b>🔥 ${Math.round(gymKcal)}</b><small>ジム kcal</small></div>`;$("historyListMeta").textContent=`${rows.length}件・期間内をすべて表示`;
+  $("historyList").innerHTML=rows.length?rows.map(h=>{const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0),dur=Number(h.durationMinutes||0),b=historyBreakdown(h),started=h.workoutStartedAt?timeLabel(h.workoutStartedAt):"—",ended=(h.workoutEndedAt||h.date)?timeLabel(h.workoutEndedAt||h.date):"—",zeroNames=(h.zeroi||[]).map(z=>z.jp||z.name).filter(Boolean);return `<details class="card historyCard"><summary><div class="historySummaryRow"><div class="date"><b>${dateLabel(h.date)}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${dur?dur+"分":"時間未記録"}${h.durationCorrected?"・訂正済":""}</small></div><span class="count">${setCount} set ▾</span></div></summary><div class="historyBody"><div class="historyOverview"><div><span>開始</span><b>${started}</b></div><div><span>終了</span><b>${ended}</b></div><div><span>滞在</span><b>${dur?dur+"分":"—"}</b></div><div><span>消費</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div><div class="durationEdit"><label>ジム滞在時間を訂正<input type="number" inputmode="numeric" min="0" max="600" step="1" value="${dur||""}" placeholder="分" data-duration-input="${h.id}"></label><button class="sub" data-save-duration="${h.id}">保存して再計算</button></div><div class="historyDetail"><div><span>ZERO-i</span><b>${h.zeroi?.length||0}/4種${zeroNames.length?`（${zeroNames.map(escapeHtml).join("・")}）`:""}</b></div><div><span>ウォームアップ</span><b>${h.warmup?"完了（5分）":"—"}</b></div>${(h.exercises||[]).map(e=>`<div><span>${escapeHtml(e.name)}</span><b>${fmt(e.weight)}kg × ${e.reps||10}回 × ${e.setsDone||0}set${e.effort?` / ${effortLabel(e.effort)}`:""}</b></div>`).join("")}<div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div><div><span>振動マシン</span><b>${h.vibration?"完了（5分）":"—"}</b></div></div><div class="historyBurnBreakdown"><div><span>ZERO-i</span><b>${Math.round(Number(b.stretch||0))} kcal</b></div><div><span>筋トレ・休憩</span><b>${Math.round(Number(b.strength||0))} kcal</b></div><div><span>ウォームアップ</span><b>${Math.round(Number(b.warmup||0))} kcal</b></div><div><span>有酸素</span><b>${Math.round(Number(b.cardio||0))} kcal</b></div><div><span>振動</span><b>${Math.round(Number(b.vibration||0))} kcal</b></div><div class="total"><span>ジム消費 合計</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div>${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}<div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div></div></details>`}).join(""):`<div class="card muted">指定期間のトレーニング履歴はまだありません。</div>`;
+  document.querySelectorAll("[data-save-duration]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const id=String(b.dataset.saveDuration),h=state.history.find(x=>String(x.id)===id),inp=document.querySelector(`[data-duration-input="${id}"]`),min=Number(inp?.value);if(!h||!Number.isFinite(min)||min<0||min>600){toast("滞在時間は0〜600分で入力してください");return}setHistoryDuration(h,Math.round(min));save();renderHistory();toast("ジム滞在時間と消費カロリーを訂正しました")});
+  document.querySelectorAll("[data-delhistory]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();if(!confirm("このトレーニング記録を削除しますか？"))return;state.history=state.history.filter(h=>String(h.id)!==String(b.dataset.delhistory));save();renderHistory();toast("履歴を削除しました")});drawStrengthChart();
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
-$("historyMonth").onchange=renderHistory;
+$("historyStart").onchange=renderHistory;
+$("historyEnd").onchange=renderHistory;
+document.querySelectorAll("[data-range-days]").forEach(b=>b.onclick=()=>{const end=todayKey(),days=Math.max(1,Number(b.dataset.rangeDays)||7);$("historyEnd").value=end;$("historyStart").value=addDays(end,-(days-1));renderHistory()});
+document.querySelectorAll("[data-range]").forEach(b=>b.onclick=()=>{const end=todayKey();if(b.dataset.range==="month"){$("historyEnd").value=end;$("historyStart").value=`${end.slice(0,8)}01`}else if(b.dataset.range==="all"){const ds=historyKnownDays();$("historyStart").value=ds[0]||end;$("historyEnd").value=ds[ds.length-1]||end}renderHistory()});
 $("strengthMetric").onchange=drawStrengthChart;
 
 function drawLineChart(canvas,points,opts={}){
@@ -703,7 +678,8 @@ function drawStrengthChart(){
   const id=$("strengthMetric").value||state.exercises[0]?.id;
   if(!id)return;
   const points=[];
-  [...state.history].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(h=>{
+  const range=normalizeHistoryRange();
+  [...state.history].filter(h=>{const d=isoDay(h.date);return d>=range.start&&d<=range.end}).sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(h=>{
     const e=(h.exercises||[]).find(x=>x.id===id);
     if(e&&e.weight!=null){
       const d=new Date(h.date);
@@ -711,7 +687,8 @@ function drawStrengthChart(){
     }
   });
   const ex=state.exercises.find(e=>e.id===id);
-  $("strengthChartCaption").textContent=ex?`${ex.name}（kg）`:"記録された重量";
+  const rg=normalizeHistoryRange();
+  $("strengthChartCaption").textContent=ex?`${ex.name}（kg） / ${rg.start.slice(5).replace("-","/")}〜${rg.end.slice(5).replace("-","/")}`:"指定期間の記録";
   drawLineChart($("strengthChart"),points,{minPad:2.5});
 }
 
