@@ -1,10 +1,10 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
 const AI_PIN_KEY="gym_note_ai_pin";
-const VERSION=10;
+const VERSION=11;
 
 const TEMPLATE={
-  dataVersion:10,
+  dataVersion:11,
   configured:true,
   goals:{weight:65,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1522,activityBurn:550},
   zeroi:[
@@ -14,15 +14,15 @@ const TEMPLATE={
     {id:"hip_flex",name:"Hip Flex",jp:"ヒップ・フレックス",target:"臀部・お尻",reps:10,icon:"🍑"}
   ],
   exercises:[
-    {id:"legpress",name:"レッグプレス",icon:"🦵",weight:45,reps:10,sets:2,step:5,note:"脚・お尻。膝を伸ばし切らない。"},
-    {id:"chest",name:"チェストプレス",icon:"💪",weight:20,reps:10,sets:2,step:2.5,note:"胸。肩をすくめずゆっくり。"},
-    {id:"lat",name:"ラットプルダウン",icon:"↙️",weight:22.5,reps:10,sets:2,step:2.5,note:"背中。胸の上へ引く。"},
-    {id:"row",name:"シーテッドロー",icon:"🚣",weight:22.5,reps:10,sets:2,step:2.5,note:"背中。肩甲骨を寄せる。"},
-    {id:"legcurl",name:"レッグカール",icon:"🦿",weight:17.5,reps:10,sets:2,step:2.5,note:"もも裏。反動を使わない。"},
-    {id:"abductor",name:"ヒップアブダクター",icon:"🍑",weight:22.5,reps:12,sets:2,step:2.5,note:"お尻の横。開いて1秒止める。"},
-    {id:"abs",name:"アブドミナルクランチ",icon:"🔥",weight:17.5,reps:12,sets:2,step:2.5,note:"腹筋。首ではなく腹を丸める。"},
-    {id:"rotary_torso",name:"ロータリートーソー",icon:"🔄",weight:12.5,reps:10,sets:2,step:2.5,note:"腹斜筋。左右それぞれ10回。勢いでねじらない。"},
-    {id:"dumbbell_curl",name:"ダンベルカール",icon:"🏋️",weight:5,reps:10,sets:2,step:1,note:"上腕二頭筋。5kg/片手。肘を固定し、反動なし。"}
+    {id:"legpress",name:"レッグプレス",icon:"🦵",weight:45,reps:10,sets:2,step:5,restSeconds:90,note:"脚・お尻。膝を伸ばし切らない。"},
+    {id:"chest",name:"チェストプレス",icon:"💪",weight:20,reps:10,sets:2,step:2.5,restSeconds:90,note:"胸。肩をすくめずゆっくり。"},
+    {id:"lat",name:"ラットプルダウン",icon:"↙️",weight:22.5,reps:10,sets:2,step:2.5,restSeconds:90,note:"背中。胸の上へ引く。"},
+    {id:"row",name:"シーテッドロー",icon:"🚣",weight:22.5,reps:10,sets:2,step:2.5,restSeconds:90,note:"背中。肩甲骨を寄せる。"},
+    {id:"legcurl",name:"レッグカール",icon:"🦿",weight:17.5,reps:10,sets:2,step:2.5,restSeconds:60,note:"もも裏。反動を使わない。"},
+    {id:"abductor",name:"ヒップアブダクター",icon:"🍑",weight:22.5,reps:12,sets:2,step:2.5,restSeconds:60,note:"お尻の横。開いて1秒止める。"},
+    {id:"abs",name:"アブドミナルクランチ",icon:"🔥",weight:17.5,reps:12,sets:2,step:2.5,restSeconds:60,note:"腹筋。首ではなく腹を丸める。"},
+    {id:"rotary_torso",name:"ロータリートーソー",icon:"🔄",weight:12.5,reps:10,sets:2,step:2.5,restSeconds:60,note:"腹斜筋。左右それぞれ10回。勢いでねじらない。"},
+    {id:"dumbbell_curl",name:"ダンベルカール",icon:"🏋️",weight:5,reps:10,sets:2,step:1,restSeconds:75,note:"上腕二頭筋。5kg/片手。肘を固定し、反動なし。"}
   ],
   body:[
     {date:"2026-09-09",weight:71.0,fat:24.9,muscle:29.8,waist:88.5,bmi:23.5,visceral:7,fatMass:17.7,bmr:1522,score:69}
@@ -30,6 +30,11 @@ const TEMPLATE={
   history:[],
   foods:[],
   ai:{endpoint:"",pin:""}
+};
+
+const MENU_DEFS={
+  A:{name:"Aメニュー",subtitle:"脚＋胸＋背中",exerciseIds:["legpress","chest","row","abductor","dumbbell_curl"]},
+  B:{name:"Bメニュー",subtitle:"脚裏＋背中＋お腹",exerciseIds:["legcurl","lat","abs","rotary_torso","legpress"]}
 };
 
 const $=id=>document.getElementById(id);
@@ -69,12 +74,12 @@ function migrate(x){
   s.foods=Array.isArray(x.foods)?x.foods:[];
   s.ai=Object.assign({},TEMPLATE.ai,x.ai||{});
   s.history=Array.isArray(x.history)?x.history.map(h=>{
-    const hh=Object.assign({zeroi:[],note:"",cardioMinutes:h.cardio?20:0,durationMinutes:0,gymCalories:0,gymBreakdown:null,workoutStartedAt:null,workoutEndedAt:null},h);
-    hh.exercises=Array.isArray(h.exercises)?h.exercises.map(e=>Object.assign({
-      setsDone:e.setsDone||0,
-      reps:e.reps||10,
-      effort:e.effort||""
-    },e)):[];
+    const hh=Object.assign({menu:"",zeroi:[],note:"",cardioMinutes:h.cardio?20:0,durationMinutes:0,gymCalories:0,gymBreakdown:null,workoutStartedAt:null,workoutEndedAt:null},h);
+    hh.exercises=Array.isArray(h.exercises)?h.exercises.map(e=>{
+      const out=Object.assign({setsDone:e.setsDone||0,reps:e.reps||10,effort:e.effort||""},e);
+      if(!Array.isArray(out.setReps)) out.setReps=Array(Math.max(0,Number(out.setsDone)||0)).fill(Number(out.reps)||10);
+      return out;
+    }):[];
     return hh;
   }):[];
   if(x.configured!==undefined) s.configured=!!x.configured;
@@ -90,18 +95,31 @@ function save(){localStorage.setItem(APP_KEY,JSON.stringify(state))}
 let state=load();
 let installPrompt=null;
 let timerI=null;
+let timerRemaining=0;
+let timerName="";
 let sessionWasRestored=false;
 
+function suggestedMenu(){
+  const last=(state.history||[]).find(h=>h.menu==="A"||h.menu==="B");
+  return last?.menu==="A"?"B":last?.menu==="B"?"A":"A";
+}
+function menuDef(key=session?.menu){return MENU_DEFS[key]||MENU_DEFS.A}
+function menuExercises(key=session?.menu){
+  const ids=menuDef(key).exerciseIds;
+  return ids.map(id=>state.exercises.find(e=>e.id===id)).filter(Boolean);
+}
+function exerciseRest(e){return Math.max(30,Number(e?.restSeconds)||Number(state.goals.restSeconds)||60)}
+
 function blankSession(){
-  const sets={},weights={},zeroi={};
-  state.exercises.forEach(e=>{sets[e.id]=Array(e.sets).fill(false);weights[e.id]=Number(e.weight)||0});
+  const sets={},weights={},setReps={},zeroi={};
+  state.exercises.forEach(e=>{sets[e.id]=Array(e.sets).fill(false);weights[e.id]=Number(e.weight)||0;setReps[e.id]=Array(e.sets).fill(Number(e.reps)||10)});
   state.zeroi.forEach(z=>zeroi[z.id]=false);
   return {
     date:todayKey(),
     startedAt:new Date().toISOString(),
     workoutStartedAt:null,
-    sets,weights,zeroi,efforts:{},
-    warmup:false,cardio:false,cardioType:"walk",cardioMinutes:20,
+    menu:suggestedMenu(),sets,weights,setReps,zeroi,efforts:{},
+    warmup:false,cardio:false,cardioType:"walk",cardioMinutes:25,
     vibration:false,note:""
   };
 }
@@ -117,10 +135,14 @@ function loadSession(){
     if(!s||s.date!==todayKey()) return blankSession();
     const fresh=blankSession();
     Object.assign(fresh,s);
+    if(!MENU_DEFS[fresh.menu]) fresh.menu=suggestedMenu();
+    if(!fresh.setReps||typeof fresh.setReps!=="object") fresh.setReps={};
     state.exercises.forEach(e=>{
       if(!Array.isArray(fresh.sets[e.id])) fresh.sets[e.id]=Array(e.sets).fill(false);
       while(fresh.sets[e.id].length<e.sets)fresh.sets[e.id].push(false);
       if(fresh.weights[e.id]==null) fresh.weights[e.id]=e.weight;
+      if(!Array.isArray(fresh.setReps[e.id])) fresh.setReps[e.id]=Array(e.sets).fill(Number(e.reps)||10);
+      while(fresh.setReps[e.id].length<e.sets)fresh.setReps[e.id].push(Number(e.reps)||10);
     });
     state.zeroi.forEach(z=>{if(fresh.zeroi[z.id]==null)fresh.zeroi[z.id]=false});
     sessionWasRestored=sessionHasProgress(fresh);
@@ -241,22 +263,39 @@ function previousExercise(id){
   }
   return null;
 }
+function setRepsFor(e,s=session){
+  return Array.from({length:e.sets},(_,j)=>Math.max(0,Number(s?.setReps?.[e.id]?.[j]??e.reps)||0));
+}
 function recommend(e){
-  const all=(session.sets[e.id]||[]).slice(0,e.sets).every(Boolean);
+  const done=(session.sets[e.id]||[]).slice(0,e.sets);
+  const all=done.length===e.sets&&done.every(Boolean);
   const ef=session.efforts[e.id]||"";
   const w=Number(session.weights[e.id]??e.weight);
   if(!all)return w;
-  if(ef==="easy")return w+e.step;
-  if(ef==="hard")return Math.max(0,w-e.step);
+  const reps=setRepsFor(e);
+  const min=Math.min(...reps);
+  if(ef==="hard"||min<Number(e.reps)*0.6)return Math.max(0,w-e.step);
+  if(ef==="easy"&&reps.every(r=>r>=Number(e.reps)))return w+e.step;
   return w;
 }
+function recommendAdvice(e){
+  const done=(session.sets[e.id]||[]).slice(0,e.sets);
+  if(done.length!==e.sets||!done.every(Boolean))return "全セット後に判定";
+  const reps=setRepsFor(e),min=Math.min(...reps),target=Number(e.reps)||10,ef=session.efforts[e.id]||"";
+  if(ef==="hard"||min<target*.6)return "少し軽くしてフォーム優先";
+  if(reps.some(r=>r<target))return "重量は維持・休憩をしっかり";
+  if(ef==="easy")return "次回は少し重量アップ";
+  return "この重量を継続";
+}
 function updateProgress(){
-  const totalSets=state.exercises.reduce((a,e)=>a+e.sets,0);
-  const doneSets=Object.values(session.sets).flat().filter(Boolean).length;
+  const exs=menuExercises();
+  const totalSets=exs.reduce((a,e)=>a+e.sets,0);
+  const doneSets=exs.reduce((a,e)=>a+(session.sets[e.id]||[]).slice(0,e.sets).filter(Boolean).length,0);
   const zeroTotal=state.zeroi.length;
   const zeroDone=Object.values(session.zeroi).filter(Boolean).length;
   const extras=[session.warmup,session.cardio,session.vibration].filter(Boolean).length;
-  const p=Math.round((doneSets+zeroDone+extras)/(totalSets+zeroTotal+3)*100);
+  const denom=totalSets+zeroTotal+3;
+  const p=denom?Math.round((doneSets+zeroDone+extras)/denom*100):0;
   $("ring").style.background=`conic-gradient(var(--accent) ${p*3.6}deg,#262c33 0deg)`;
   $("pct").textContent=p+"%";
 }
@@ -297,6 +336,22 @@ function renderToday(){
   quickStats();
   renderWorkoutTracker();
 
+  const md=menuDef();
+  $("menuSummary").innerHTML=`<b>${md.name}</b>：${md.subtitle}<br><span>${md.exerciseIds.length}種目＋有酸素25〜30分。前回と交互にすると全身を回しやすいです。</span>`;
+  document.querySelectorAll("[data-menu]").forEach(b=>{
+    b.classList.toggle("active",b.dataset.menu===session.menu);
+    b.onclick=()=>{
+      const next=b.dataset.menu;if(next===session.menu)return;
+      const strengthProgress=Object.values(session.sets||{}).flat().some(Boolean)||Object.keys(session.efforts||{}).length>0;
+      if(strengthProgress&&!confirm("A/Bを切り替えると、今日の筋トレのセット入力をリセットします。切り替えますか？"))return;
+      if(strengthProgress){
+        state.exercises.forEach(e=>{session.sets[e.id]=Array(e.sets).fill(false);session.setReps[e.id]=Array(e.sets).fill(Number(e.reps)||10)});
+        session.efforts={};
+      }
+      session.menu=next;sessionWasRestored=false;saveSession();renderToday();
+    };
+  });
+
   $("zeroList").innerHTML=state.zeroi.map((z,i)=>`
     <div class="card row">
       <div class="exerciseTitle">
@@ -311,15 +366,18 @@ function renderToday(){
     sessionWasRestored=false;touchSession();renderToday();
   });
 
-  $("exerciseList").innerHTML=state.exercises.map((e,i)=>{
+  const todayExercises=menuExercises();
+  $("exerciseList").innerHTML=todayExercises.map((e,i)=>{
     const ef=session.efforts[e.id]||"";
     const prev=previousExercise(e.id);
-    const prevText=prev?`${dateLabel(prev.date)}：${fmt(prev.weight)}kg × ${prev.setsDone}set${prev.effort?` / ${effortLabel(prev.effort)}`:""}`:"まだ履歴なし";
-    return `<div class="card">
+    const prevReps=prev?.setReps?.length?prev.setReps.slice(0,prev.setsDone||prev.setReps.length).join("/")+"回":prev?`${prev.reps||e.reps}回 × ${prev.setsDone||0}set`:"";
+    const prevText=prev?`${dateLabel(prev.date)}：${fmt(prev.weight)}kg / ${prevReps}${prev.effort?` / ${effortLabel(prev.effort)}`:""}`:"まだ履歴なし";
+    const reps=setRepsFor(e);
+    return `<div class="card exerciseCard">
       <div class="exerciseTop">
         <div class="exerciseTitle">
           <span class="icon">${e.icon}</span>
-          <div><strong>${i+1}. ${e.name}</strong><small>${e.note}</small></div>
+          <div><strong>${i+1}. ${e.name}</strong><small>${e.note}</small><span class="restBadge">休憩 ${exerciseRest(e)}秒</span></div>
         </div>
         <div class="weight">
           <div class="weightControl">
@@ -327,17 +385,26 @@ function renderToday(){
             <input type="number" inputmode="decimal" step="${e.step}" value="${fmt(session.weights[e.id])}" data-weight-input="${e.id}">
             <button class="mini" data-weight="${e.id}|${e.step}">＋</button>
           </div>
-          <small>kg / ${e.reps}回 × ${e.sets}</small>
+          <small>kg / 目標 ${e.reps}回 × ${e.sets}</small>
         </div>
       </div>
       <div class="previous">前回：<b>${prevText}</b></div>
-      <div class="sets">
-        ${Array.from({length:e.sets},(_,j)=>`<button class="set ${session.sets[e.id][j]?"on":""}" data-set="${e.id}|${j}">${j+1}セット ${session.sets[e.id][j]?"✓":e.reps+"回"}</button>`).join("")}
+      <div class="setRows">
+        ${Array.from({length:e.sets},(_,j)=>`<div class="setRow ${session.sets[e.id][j]?"on":""}">
+          <div class="setName"><b>${j+1}セット</b><small>目標 ${e.reps}回</small></div>
+          <div class="repControl">
+            <button class="mini" data-rep="${e.id}|${j}|-1">−</button>
+            <strong>${reps[j]}<small>回</small></strong>
+            <button class="mini" data-rep="${e.id}|${j}|1">＋</button>
+          </div>
+          <button class="setDone ${session.sets[e.id][j]?"on":""}" data-set="${e.id}|${j}">${session.sets[e.id][j]?"完了 ✓":"完了"}</button>
+        </div>`).join("")}
       </div>
+      <p class="setHint">2セット目が8〜9回でもOK。フォームが崩れる前に止めて、実際の回数を残します。</p>
       <div class="efforts">
         ${[["easy","余裕"],["good","ちょうど"],["hard","きつい"]].map(a=>`<button class="effort ${ef===a[0]?"on":""}" data-eff="${e.id}|${a[0]}">${a[1]}</button>`).join("")}
       </div>
-      <div class="next"><span>次回の目安</span><b>${fmt(recommend(e))}kg</b></div>
+      <div class="next"><span>次回の目安 <small>${recommendAdvice(e)}</small></span><b>${fmt(recommend(e))}kg</b></div>
     </div>`;
   }).join("");
 
@@ -345,7 +412,16 @@ function renderToday(){
     ensureWorkoutStarted();
     const [id,j]=b.dataset.set.split("|");
     session.sets[id][+j]=!session.sets[id][+j];
-    if(session.sets[id][+j])startTimer();
+    if(session.sets[id][+j]){
+      const e=state.exercises.find(x=>x.id===id);startTimer(exerciseRest(e),e?.name||"休憩");
+    }
+    sessionWasRestored=false;touchSession();renderToday();
+  });
+  document.querySelectorAll("[data-rep]").forEach(b=>b.onclick=()=>{
+    ensureWorkoutStarted();
+    const [id,j,delta]=b.dataset.rep.split("|");
+    const e=state.exercises.find(x=>x.id===id);if(!e)return;
+    session.setReps[id][+j]=Math.max(0,Math.min(99,Number(session.setReps[id][+j]??e.reps)+Number(delta)));
     sessionWasRestored=false;touchSession();renderToday();
   });
   document.querySelectorAll("[data-eff]").forEach(b=>b.onclick=()=>{
@@ -379,7 +455,7 @@ function renderToday(){
   $("bikePane").classList.toggle("active",session.cardioType==="bike");
   $("cardioMinutesText").textContent=session.cardioMinutes;
   document.querySelectorAll("[data-cardio-min]").forEach(b=>b.onclick=()=>{
-    session.cardioMinutes=Math.max(5,Math.min(120,Number(session.cardioMinutes||20)+Number(b.dataset.cardioMin)));
+    session.cardioMinutes=Math.max(5,Math.min(120,Number(session.cardioMinutes||25)+Number(b.dataset.cardioMin)));
     sessionWasRestored=false;touchSession();renderToday();
   });
   $("cardioDone").textContent=session.cardio?"有酸素 完了 ✓":"有酸素を完了";
@@ -392,25 +468,33 @@ function renderToday(){
 
 function effortLabel(v){return v==="easy"?"余裕":v==="good"?"ちょうど":v==="hard"?"きつい":""}
 
-function startTimer(){
+function paintTimer(){
+  if($("timerLabel")) $("timerLabel").textContent=timerName?`${timerName} 休憩`:"休憩";
+  $("timerN").textContent=Math.max(0,Math.round(timerRemaining));
+}
+function startTimer(seconds,label=""){
   clearInterval(timerI);
-  let n=Number(state.goals.restSeconds)||60;
-  $("timer").classList.remove("hidden");$("timerN").textContent=n;
+  timerRemaining=Math.max(1,Number(seconds)||Number(state.goals.restSeconds)||60);
+  timerName=label;
+  $("timer").classList.remove("hidden");paintTimer();
   timerI=setInterval(()=>{
-    $("timerN").textContent=--n;
-    if(n<=0){
+    timerRemaining--;
+    paintTimer();
+    if(timerRemaining<=0){
       clearInterval(timerI);$("timer").classList.add("hidden");
-      navigator.vibrate?.([150,80,150]);toast("休憩終了");
+      navigator.vibrate?.([150,80,150]);toast("休憩終了・次のセットへ");
     }
   },1000);
 }
+$("timerPlus").onclick=()=>{timerRemaining+=30;paintTimer()};
 $("timerX").onclick=()=>{clearInterval(timerI);$("timer").classList.add("hidden")};
 
 $("saveWorkout").onclick=()=>{
-  const done=state.exercises.map(e=>({
+  const done=menuExercises().map(e=>({
     id:e.id,name:e.name,weight:Number(session.weights[e.id]??e.weight),
     reps:e.reps,setsDone:(session.sets[e.id]||[]).filter(Boolean).length,
-    effort:session.efforts[e.id]||""
+    setReps:setRepsFor(e).filter((_,j)=>!!session.sets[e.id]?.[j]),
+    restSeconds:exerciseRest(e),effort:session.efforts[e.id]||""
   })).filter(e=>e.setsDone>0);
 
   if(!done.length){toast("筋トレを1種目以上記録してください");return}
@@ -433,10 +517,10 @@ $("saveWorkout").onclick=()=>{
     cardioMinutes:session.cardio?session.cardioMinutes:0,
     vibration:session.vibration,
     note:String(session.note||"").trim(),
-    exercises:done
+    menu:session.menu,exercises:done
   });
 
-  state.exercises.forEach(e=>{
+  menuExercises().forEach(e=>{
     const all=(session.sets[e.id]||[]).slice(0,e.sets).every(Boolean);
     if(!all)return;
     e.weight=recommend(e);
@@ -662,10 +746,14 @@ function renderRangeCalorieSummary(){
   if(!recordedDays.length){$("rangeCalorieSummary").innerHTML=`<div class="rangeTitle"><div><span>期間のカロリー収支</span><b>${start.replaceAll("-","/")} ～ ${end.replaceAll("-","/")}</b></div><strong>—</strong></div><p>この期間には食事記録がありません。<span>食事記録がある日だけを収支集計します。</span></p>`;return}
   $("rangeCalorieSummary").innerHTML=`<div class="rangeTitle"><div><span>期間のカロリー収支</span><b>${start.replaceAll("-","/")} ～ ${end.replaceAll("-","/")}</b></div><strong class="${balance<=0?"deficit":"surplus"}">${sign(balance)}${Math.abs(Math.round(balance))} kcal</strong></div><div class="rangeGrid"><div><span>摂取合計</span><b>${Math.round(intake)} kcal</b></div><div><span>消費合計</span><b>${Math.round(burn)} kcal</b></div><div><span>うちジム</span><b>${Math.round(gym)} kcal</b></div><div><span>1日平均収支</span><b>${sign(avg)}${Math.abs(Math.round(avg))} kcal</b></div></div><p>${status}　<span>計算：摂取 − 消費 / 食事記録あり ${recordedDays.length}日（期間 ${days.length}日）</span></p>`;
 }
+function historyExerciseText(e){
+  const reps=Array.isArray(e?.setReps)&&e.setReps.length?e.setReps.slice(0,e.setsDone||e.setReps.length).join("/")+"回":`${e.reps||10}回 × ${e.setsDone||0}set`;
+  return `${fmt(e.weight)}kg × ${reps}${e.effort?` / ${effortLabel(e.effort)}`:""}`;
+}
 function renderHistory(){
   populateHistoryControls();const rows=historyRowsInRange(),sets=rows.reduce((a,h)=>a+(h.exercises||[]).reduce((b,e)=>b+(e.setsDone||0),0),0),cardio=rows.reduce((a,h)=>a+(h.cardio?Number(h.cardioMinutes||20):0),0),gymKcal=rows.reduce((a,h)=>a+historyGymBurn(h),0),gymMinutes=rows.reduce((a,h)=>a+Number(h.durationMinutes||0),0),zeroi=rows.reduce((a,h)=>a+(h.zeroi?.length||0),0);
   renderRangeCalorieSummary();$("historySummary").innerHTML=`<div class="card"><b>${rows.length}</b><small>ジム回数</small></div><div class="card"><b>${sets}</b><small>総セット</small></div><div class="card"><b>${gymMinutes}</b><small>滞在 分</small></div><div class="card"><b>${cardio}</b><small>有酸素 分</small></div><div class="card"><b>${zeroi}</b><small>ZERO-i 種目</small></div><div class="card"><b>🔥 ${Math.round(gymKcal)}</b><small>ジム kcal</small></div>`;$("historyListMeta").textContent=`${rows.length}件・期間内をすべて表示`;
-  $("historyList").innerHTML=rows.length?rows.map(h=>{const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0),dur=Number(h.durationMinutes||0),b=historyBreakdown(h),started=h.workoutStartedAt?timeLabel(h.workoutStartedAt):"—",ended=(h.workoutEndedAt||h.date)?timeLabel(h.workoutEndedAt||h.date):"—",zeroNames=(h.zeroi||[]).map(z=>z.jp||z.name).filter(Boolean);return `<details class="card historyCard"><summary><div class="historySummaryRow"><div class="date"><b>${dateLabel(h.date)}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${dur?dur+"分":"時間未記録"}${h.durationCorrected?"・訂正済":""}</small></div><span class="count">${setCount} set ▾</span></div></summary><div class="historyBody"><div class="historyOverview"><div><span>開始</span><b>${started}</b></div><div><span>終了</span><b>${ended}</b></div><div><span>滞在</span><b>${dur?dur+"分":"—"}</b></div><div><span>消費</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div><div class="durationEdit"><label>ジム滞在時間を訂正<input type="number" inputmode="numeric" min="0" max="600" step="1" value="${dur||""}" placeholder="分" data-duration-input="${h.id}"></label><button class="sub" data-save-duration="${h.id}">保存して再計算</button></div><div class="historyDetail"><div><span>ZERO-i</span><b>${h.zeroi?.length||0}/4種${zeroNames.length?`（${zeroNames.map(escapeHtml).join("・")}）`:""}</b></div><div><span>ウォームアップ</span><b>${h.warmup?"完了（5分）":"—"}</b></div>${(h.exercises||[]).map(e=>`<div><span>${escapeHtml(e.name)}</span><b>${fmt(e.weight)}kg × ${e.reps||10}回 × ${e.setsDone||0}set${e.effort?` / ${effortLabel(e.effort)}`:""}</b></div>`).join("")}<div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div><div><span>振動マシン</span><b>${h.vibration?"完了（5分）":"—"}</b></div></div><div class="historyBurnBreakdown"><div><span>ZERO-i</span><b>${Math.round(Number(b.stretch||0))} kcal</b></div><div><span>筋トレ・休憩</span><b>${Math.round(Number(b.strength||0))} kcal</b></div><div><span>ウォームアップ</span><b>${Math.round(Number(b.warmup||0))} kcal</b></div><div><span>有酸素</span><b>${Math.round(Number(b.cardio||0))} kcal</b></div><div><span>振動</span><b>${Math.round(Number(b.vibration||0))} kcal</b></div><div class="total"><span>ジム消費 合計</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div>${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}<div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div></div></details>`}).join(""):`<div class="card muted">指定期間のトレーニング履歴はまだありません。</div>`;
+  $("historyList").innerHTML=rows.length?rows.map(h=>{const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0),dur=Number(h.durationMinutes||0),b=historyBreakdown(h),started=h.workoutStartedAt?timeLabel(h.workoutStartedAt):"—",ended=(h.workoutEndedAt||h.date)?timeLabel(h.workoutEndedAt||h.date):"—",zeroNames=(h.zeroi||[]).map(z=>z.jp||z.name).filter(Boolean);return `<details class="card historyCard"><summary><div class="historySummaryRow"><div class="date"><b>${dateLabel(h.date)}${h.menu?` <span class="menuMini">${h.menu}</span>`:""}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${dur?dur+"分":"時間未記録"}${h.durationCorrected?"・訂正済":""}</small></div><span class="count">${setCount} set ▾</span></div></summary><div class="historyBody"><div class="historyOverview"><div><span>開始</span><b>${started}</b></div><div><span>終了</span><b>${ended}</b></div><div><span>滞在</span><b>${dur?dur+"分":"—"}</b></div><div><span>消費</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div><div class="durationEdit"><label>ジム滞在時間を訂正<input type="number" inputmode="numeric" min="0" max="600" step="1" value="${dur||""}" placeholder="分" data-duration-input="${h.id}"></label><button class="sub" data-save-duration="${h.id}">保存して再計算</button></div><div class="historyDetail"><div><span>ZERO-i</span><b>${h.zeroi?.length||0}/4種${zeroNames.length?`（${zeroNames.map(escapeHtml).join("・")}）`:""}</b></div><div><span>ウォームアップ</span><b>${h.warmup?"完了（5分）":"—"}</b></div>${(h.exercises||[]).map(e=>`<div><span>${escapeHtml(e.name)}</span><b>${historyExerciseText(e)}</b></div>`).join("")}<div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div><div><span>振動マシン</span><b>${h.vibration?"完了（5分）":"—"}</b></div></div><div class="historyBurnBreakdown"><div><span>ZERO-i</span><b>${Math.round(Number(b.stretch||0))} kcal</b></div><div><span>筋トレ・休憩</span><b>${Math.round(Number(b.strength||0))} kcal</b></div><div><span>ウォームアップ</span><b>${Math.round(Number(b.warmup||0))} kcal</b></div><div><span>有酸素</span><b>${Math.round(Number(b.cardio||0))} kcal</b></div><div><span>振動</span><b>${Math.round(Number(b.vibration||0))} kcal</b></div><div class="total"><span>ジム消費 合計</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div>${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}<div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div></div></details>`}).join(""):`<div class="card muted">指定期間のトレーニング履歴はまだありません。</div>`;
   document.querySelectorAll("[data-save-duration]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const id=String(b.dataset.saveDuration),h=state.history.find(x=>String(x.id)===id),inp=document.querySelector(`[data-duration-input="${id}"]`),min=Number(inp?.value);if(!h||!Number.isFinite(min)||min<0||min>600){toast("滞在時間は0〜600分で入力してください");return}setHistoryDuration(h,Math.round(min));save();renderHistory();toast("ジム滞在時間と消費カロリーを訂正しました")});
   document.querySelectorAll("[data-delhistory]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();if(!confirm("このトレーニング記録を削除しますか？"))return;state.history=state.history.filter(h=>String(h.id)!==String(b.dataset.delhistory));save();renderHistory();toast("履歴を削除しました")});drawStrengthChart();
 }
@@ -778,6 +866,7 @@ function renderSettings(){
   $("goalFat").value=state.goals.fat??"";
   $("goalMuscle").value=state.goals.muscle??"";
   $("restSec").value=state.goals.restSeconds||60;
+  if($("exerciseRestSettings")) $("exerciseRestSettings").innerHTML=state.exercises.map(e=>`<label class="restSettingRow"><span>${e.name}</span><span><input type="number" min="30" max="300" step="15" value="${exerciseRest(e)}" data-rest-input="${e.id}"> 秒</span></label>`).join("");
   $("calorieGoal").value=state.goals.calorieGoal||1900;
   $("bmr").value=state.goals.bmr||1522;
   $("activityBurn").value=state.goals.activityBurn||550;
@@ -796,6 +885,7 @@ $("saveSettings").onclick=()=>{
     bmr:Number($("bmr").value)||1522,
     activityBurn:Number($("activityBurn").value)||550
   };
+  document.querySelectorAll("[data-rest-input]").forEach(inp=>{const e=state.exercises.find(x=>x.id===inp.dataset.restInput);if(e)e.restSeconds=Math.max(30,Number(inp.value)||Number(state.goals.restSeconds)||60)});
   state.ai=Object.assign({},state.ai||{}, {endpoint:String($("aiEndpoint").value||"").trim().replace(/\/$/,"")});
   state.configured=true;save();renderToday();toast("設定を保存しました");
 };
@@ -813,12 +903,12 @@ $("exportBtn").onclick=()=>{
   downloadBlob(JSON.stringify(backup,null,2),"application/json",`gym-note-backup-${todayKey()}.json`);
 };
 $("csvBtn").onclick=()=>{
-  const rows=[["日時","種目","重量kg","回数","セット数","感覚","ZERO-i数","有酸素","有酸素分","ジム消費kcal","ジム時間分","メモ"]];
+  const rows=[["日時","メニュー","種目","重量kg","目標回数","セット別回数","セット数","感覚","休憩秒","ZERO-i数","有酸素","有酸素分","ジム消費kcal","ジム時間分","メモ"]];
   [...state.history].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(h=>{
     (h.exercises||[]).forEach(e=>{
       rows.push([
-        new Date(h.date).toLocaleString("ja-JP"),e.name,e.weight,e.reps||"",e.setsDone||"",effortLabel(e.effort),
-        h.zeroi?.length||0,h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング"):"",h.cardio?h.cardioMinutes||20:"",Math.round(historyGymBurn(h)),h.durationMinutes||"",h.note||""
+        new Date(h.date).toLocaleString("ja-JP"),h.menu||"",e.name,e.weight,e.reps||"",Array.isArray(e.setReps)?e.setReps.join("/"):"",e.setsDone||"",effortLabel(e.effort),e.restSeconds||"",
+        h.zeroi?.length||0,h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング"):"",h.cardio?h.cardioMinutes||25:"",Math.round(historyGymBurn(h)),h.durationMinutes||"",h.note||""
       ]);
     });
   });
