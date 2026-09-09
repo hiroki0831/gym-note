@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=530">
+  <link rel="stylesheet" href="./styles.css?v=540">
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.3 AI食事・期間収支・履歴</b></h1></div>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.4 体組成入力・種目追加</b></h1></div>
   <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
@@ -185,18 +185,26 @@
   <div class="heading">
     <small>BODY</small>
     <h2>からだの記録</h2>
-    <p>体重だけでなく、体脂肪率・筋肉量・腹囲を見る。</p>
+    <p>今回の体組成を基準に、次回から変わった数値を手入力できます。</p>
   </div>
 
+  <div id="bodyLatestSummary" class="card bodyLatest"></div>
+
   <form id="bodyForm" class="card form">
+    <div class="formTitleLine"><div><h3>体組成を入力</h3><p class="muted tiny">同じ測定日で保存すると上書き更新します。</p></div></div>
     <label>測定日<input id="bodyDate" type="date" required></label>
     <div class="grid2">
       <label>体重 kg<input id="bodyWeight" type="number" step=".1" min="30" max="200" required></label>
       <label>体脂肪率 %<input id="bodyFat" type="number" step=".1" min="3" max="60"></label>
       <label>骨格筋量 kg<input id="bodyMuscle" type="number" step=".1" min="10" max="80"></label>
       <label>腹囲 cm<input id="bodyWaist" type="number" step=".1" min="40" max="180"></label>
+      <label>BMI<input id="bodyBmi" type="number" step=".1" min="10" max="60"></label>
+      <label>内臓脂肪レベル<input id="bodyVisceral" type="number" step="1" min="1" max="30"></label>
+      <label>体脂肪量 kg<input id="bodyFatMass" type="number" step=".1" min="1" max="100"></label>
+      <label>基礎代謝 kcal<input id="bodyBmr" type="number" step="1" min="800" max="3000"></label>
+      <label>InBody点数<input id="bodyScore" type="number" step="1" min="1" max="100"></label>
     </div>
-    <button class="primary full" type="submit">測定データを追加</button>
+    <button class="primary full" type="submit">測定データを保存・更新</button>
   </form>
 
   <div class="card">
@@ -207,6 +215,11 @@
         <option value="fat">体脂肪率</option>
         <option value="muscle">骨格筋量</option>
         <option value="waist">腹囲</option>
+        <option value="bmi">BMI</option>
+        <option value="visceral">内臓脂肪レベル</option>
+        <option value="fatMass">体脂肪量</option>
+        <option value="bmr">基礎代謝</option>
+        <option value="score">InBody点数</option>
       </select>
     </div>
     <canvas id="chart" height="220"></canvas>
@@ -236,7 +249,7 @@
       <label>基礎代謝 kcal<input id="bmr" type="number" min="800" max="3000" step="10"></label>
       <label>日常生活の消費 kcal<input id="activityBurn" type="number" min="0" max="3000" step="25"></label>
     </div>
-    <p class="muted tiny">初期値：基礎代謝1,540 kcal / 日常生活550 kcal。ジム分はトレーニング記録から自動で加算します。</p>
+    <p class="muted tiny">初期値：基礎代謝1,522 kcal / 日常生活550 kcal。ジム分はトレーニング記録から自動で加算します。</p>
   </div>
 
   <div class="card form">
@@ -262,7 +275,7 @@
 
   <div class="card">
     <h3>アプリ</h3>
-    <p class="muted">PWA版 v5.3。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
+    <p class="muted">PWA版 v5.4。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
     <button id="checkUpdate" class="sub full">更新を確認</button>
   </div>
 </section>
@@ -279,6 +292,6 @@
 <div id="timer" class="timer hidden">休憩 <b id="timerN">60</b> 秒 <button id="timerX">×</button></div>
 <div id="toast" class="toast"></div>
 
-<script src="./app.js?v=530"></script>
+<script src="./app.js?v=540"></script>
 </body>
 </html>

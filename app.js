@@ -1,12 +1,12 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
 const AI_PIN_KEY="gym_note_ai_pin";
-const VERSION=9;
+const VERSION=10;
 
 const TEMPLATE={
-  dataVersion:9,
-  configured:false,
-  goals:{weight:null,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1540,activityBurn:550},
+  dataVersion:10,
+  configured:true,
+  goals:{weight:65,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1522,activityBurn:550},
   zeroi:[
     {id:"shoulder_elevation",name:"Shoulder Elevation",jp:"ショルダー・エレベーション",target:"背中上部・肩まわり",reps:10,icon:"🙆"},
     {id:"chest_extension",name:"Chest Extension",jp:"チェスト・エクステンション",target:"胸部・肩",reps:10,icon:"🫸"},
@@ -20,9 +20,13 @@ const TEMPLATE={
     {id:"row",name:"シーテッドロー",icon:"🚣",weight:22.5,reps:10,sets:2,step:2.5,note:"背中。肩甲骨を寄せる。"},
     {id:"legcurl",name:"レッグカール",icon:"🦿",weight:17.5,reps:10,sets:2,step:2.5,note:"もも裏。反動を使わない。"},
     {id:"abductor",name:"ヒップアブダクター",icon:"🍑",weight:22.5,reps:12,sets:2,step:2.5,note:"お尻の横。開いて1秒止める。"},
-    {id:"abs",name:"アブドミナルクランチ",icon:"🔥",weight:17.5,reps:12,sets:2,step:2.5,note:"腹筋。首ではなく腹を丸める。"}
+    {id:"abs",name:"アブドミナルクランチ",icon:"🔥",weight:17.5,reps:12,sets:2,step:2.5,note:"腹筋。首ではなく腹を丸める。"},
+    {id:"rotary_torso",name:"ロータリートーソー",icon:"🔄",weight:12.5,reps:10,sets:2,step:2.5,note:"腹斜筋。左右それぞれ10回。勢いでねじらない。"},
+    {id:"dumbbell_curl",name:"ダンベルカール",icon:"🏋️",weight:5,reps:10,sets:2,step:1,note:"上腕二頭筋。5kg/片手。肘を固定し、反動なし。"}
   ],
-  body:[],
+  body:[
+    {date:"2026-09-09",weight:71.0,fat:24.9,muscle:29.8,waist:88.5,bmi:23.5,visceral:7,fatMass:17.7,bmr:1522,score:69}
+  ],
   history:[],
   foods:[],
   ai:{endpoint:"",pin:""}
@@ -42,12 +46,26 @@ function migrate(x){
   Object.assign(s,x);
   s.dataVersion=VERSION;
   s.goals=Object.assign({},TEMPLATE.goals,x.goals||{});
-  // v5以前は「1日の消費目安」だけだったため、v5.2では基礎代謝＋日常生活＋ジムに分離。
-  if(x.goals?.bmr==null) s.goals.bmr=1540;
+  // v5以前は「1日の消費目安」だけだったため、基礎代謝＋日常生活＋ジムに分離。
+  if(x.goals?.bmr==null) s.goals.bmr=1522;
   if(x.goals?.activityBurn==null) s.goals.activityBurn=550;
+  if(x.goals?.weight==null) s.goals.weight=65;
   s.zeroi=x.zeroi?.length?x.zeroi:clone(TEMPLATE.zeroi);
-  s.exercises=x.exercises?.length?x.exercises:clone(TEMPLATE.exercises);
-  s.body=Array.isArray(x.body)?x.body:[];
+
+  // v5.4: 既存端末の重量変更などは保持しつつ、新しく追加した種目を自動で補う。
+  const savedExercises=Array.isArray(x.exercises)?x.exercises:[];
+  const defaultsById=new Map(TEMPLATE.exercises.map(e=>[e.id,e]));
+  s.exercises=TEMPLATE.exercises.map(def=>Object.assign({},def,savedExercises.find(e=>e.id===def.id)||{}));
+  savedExercises.filter(e=>!defaultsById.has(e.id)).forEach(e=>s.exercises.push(e));
+
+  // 2026-09-09の体組成を基準値として保持。すでに同日のデータがあれば入力済み値を優先。
+  s.body=Array.isArray(x.body)?x.body.map(b=>Object.assign({},b)):[];
+  const baseline=clone(TEMPLATE.body[0]);
+  const baselineIndex=s.body.findIndex(b=>String(b.date)===baseline.date);
+  if(baselineIndex>=0) s.body[baselineIndex]=Object.assign({},baseline,s.body[baselineIndex]);
+  else s.body.push(baseline);
+  const latestBmr=[...s.body].filter(b=>b?.bmr!=null).sort((a,b)=>String(a.date).localeCompare(String(b.date))).at(-1);
+  if(latestBmr) s.goals.bmr=Number(latestBmr.bmr)||s.goals.bmr;
   s.foods=Array.isArray(x.foods)?x.foods:[];
   s.ai=Object.assign({},TEMPLATE.ai,x.ai||{});
   s.history=Array.isArray(x.history)?x.history.map(h=>{
@@ -692,17 +710,35 @@ function drawStrengthChart(){
   drawLineChart($("strengthChart"),points,{minPad:2.5});
 }
 
+const BODY_FIELDS=[
+  ["bodyWeight","weight"],["bodyFat","fat"],["bodyMuscle","muscle"],["bodyWaist","waist"],
+  ["bodyBmi","bmi"],["bodyVisceral","visceral"],["bodyFatMass","fatMass"],["bodyBmr","bmr"],["bodyScore","score"]
+];
+function fillBodyFormForDate(day){
+  const x=(state.body||[]).find(b=>String(b.date)===String(day));
+  BODY_FIELDS.forEach(([id,key])=>{$(id).value=x?.[key]??""});
+}
+function bodyMetric(label,value,unit=""){return value==null?"":`<span>${label} <b>${fmt(value)}${unit}</b></span>`}
 function renderBody(){
-  $("bodyDate").value=todayKey();
+  const selected=$("bodyDate").value||todayKey();
+  $("bodyDate").value=selected;
+  fillBodyFormForDate(selected);
+  const latest=latestBody();
+  $("bodyLatestSummary").innerHTML=latest?`
+    <div class="bodyLatestHead"><div><span class="muted tiny">最新の基準データ</span><strong>${String(latest.date).replaceAll("-","/")}</strong></div><b>${fmt(latest.weight)} kg</b></div>
+    <div class="bodyLatestGrid">
+      ${bodyMetric("体脂肪",latest.fat,"%")}${bodyMetric("骨格筋",latest.muscle,"kg")}${bodyMetric("腹囲",latest.waist,"cm")}
+      ${bodyMetric("BMI",latest.bmi)}${bodyMetric("内臓脂肪",latest.visceral)}${bodyMetric("体脂肪量",latest.fatMass,"kg")}
+      ${bodyMetric("基礎代謝",latest.bmr,"kcal")}${bodyMetric("InBody",latest.score,"点")}
+    </div>`:`<span class="muted">まだ身体データがありません。</span>`;
+
   const a=[...state.body].sort((x,y)=>String(y.date).localeCompare(String(x.date)));
   $("bodyList").innerHTML=a.length?a.map(x=>`
     <div class="card bodyRow">
       <div class="row"><strong>${String(x.date).replaceAll("-","/")}</strong><button class="sub compact" data-delbody="${x.date}">削除</button></div>
       <div class="details">
-        <span>体重 <b>${fmt(x.weight)}kg</b></span>
-        <span>脂肪 <b>${fmt(x.fat)}%</b></span>
-        <span>筋肉 <b>${fmt(x.muscle)}kg</b></span>
-        ${x.waist!=null?`<span>腹囲 <b>${fmt(x.waist)}cm</b></span>`:""}
+        ${bodyMetric("体重",x.weight,"kg")}${bodyMetric("脂肪",x.fat,"%")}${bodyMetric("筋肉",x.muscle,"kg")}${bodyMetric("腹囲",x.waist,"cm")}
+        ${bodyMetric("BMI",x.bmi)}${bodyMetric("内臓脂肪",x.visceral)}${bodyMetric("体脂肪量",x.fatMass,"kg")}${bodyMetric("基礎代謝",x.bmr,"kcal")}${bodyMetric("InBody",x.score,"点")}
       </div>
     </div>`).join(""):`<div class="card muted">まだ身体データがありません。</div>`;
   document.querySelectorAll("[data-delbody]").forEach(b=>b.onclick=()=>{
@@ -711,6 +747,7 @@ function renderBody(){
   });
   drawBodyChart();
 }
+$("bodyDate").onchange=()=>fillBodyFormForDate($("bodyDate").value);
 $("bodyForm").onsubmit=e=>{
   e.preventDefault();
   const x={
@@ -718,10 +755,16 @@ $("bodyForm").onsubmit=e=>{
     weight:Number($("bodyWeight").value),
     fat:$("bodyFat").value?Number($("bodyFat").value):null,
     muscle:$("bodyMuscle").value?Number($("bodyMuscle").value):null,
-    waist:$("bodyWaist").value?Number($("bodyWaist").value):null
+    waist:$("bodyWaist").value?Number($("bodyWaist").value):null,
+    bmi:$("bodyBmi").value?Number($("bodyBmi").value):null,
+    visceral:$("bodyVisceral").value?Number($("bodyVisceral").value):null,
+    fatMass:$("bodyFatMass").value?Number($("bodyFatMass").value):null,
+    bmr:$("bodyBmr").value?Number($("bodyBmr").value):null,
+    score:$("bodyScore").value?Number($("bodyScore").value):null
   };
   state.body=state.body.filter(y=>String(y.date)!==String(x.date));state.body.push(x);
-  state.configured=true;save();e.target.reset();renderBody();renderToday();toast("身体データを追加しました");
+  if(x.bmr!=null) state.goals.bmr=x.bmr;
+  state.configured=true;save();renderBody();renderToday();toast("身体データを保存しました");
 };
 $("metric").onchange=drawBodyChart;
 function drawBodyChart(){
@@ -736,7 +779,7 @@ function renderSettings(){
   $("goalMuscle").value=state.goals.muscle??"";
   $("restSec").value=state.goals.restSeconds||60;
   $("calorieGoal").value=state.goals.calorieGoal||1900;
-  $("bmr").value=state.goals.bmr||1540;
+  $("bmr").value=state.goals.bmr||1522;
   $("activityBurn").value=state.goals.activityBurn||550;
   $("aiEndpoint").value=state.ai?.endpoint||"";
   if($("aiPin")) $("aiPin").value="";
@@ -750,7 +793,7 @@ $("saveSettings").onclick=()=>{
     restSeconds:Number($("restSec").value)||60,
     calorieGoal:Number($("calorieGoal").value)||1900,
     dailyBurn:Number(state.goals.dailyBurn)||2300,
-    bmr:Number($("bmr").value)||1540,
+    bmr:Number($("bmr").value)||1522,
     activityBurn:Number($("activityBurn").value)||550
   };
   state.ai=Object.assign({},state.ai||{}, {endpoint:String($("aiEndpoint").value||"").trim().replace(/\/$/,"")});
