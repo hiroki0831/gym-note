@@ -974,9 +974,19 @@ window.addEventListener("beforeinstallprompt",e=>{
 async function registerSW(){
   if(!("serviceWorker" in navigator))return;
   try{
-    const r=await navigator.serviceWorker.register("./sw.js");
+    let reloading=false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(reloading)return;reloading=true;
+      location.reload();
+    });
+    const r=await navigator.serviceWorker.register("./sw.js?v=552",{updateViaCache:"none"});
+    await r.update().catch(()=>{});
     $("checkUpdate").onclick=async()=>{
-      await r.update();toast("更新を確認しました。必要ならアプリを一度閉じて開き直してください");
+      try{
+        toast("最新版を確認しています…");
+        await r.update();
+        setTimeout(()=>location.replace(`./index.html?v=552&refresh=${Date.now()}`),500);
+      }catch(e){toast("更新確認に失敗しました")}
     };
   }catch(e){}
 }
