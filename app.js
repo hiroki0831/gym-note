@@ -235,7 +235,7 @@ function historyGymBurn(h){
   return estimateGymBurn(pseudo).total;
 }
 function gymBurnForDay(day){
-  let total=(state.history||[]).filter(h=>String(h.date||"").slice(0,10)===day).reduce((a,h)=>a+historyGymBurn(h),0);
+  let total=(state.history||[]).filter(h=>isoDay(h.date)===day).reduce((a,h)=>a+historyGymBurn(h),0);
   if(day===todayKey() && sessionHasProgress(session)) total+=estimateGymBurn(session).total;
   return Math.round(total);
 }
@@ -247,13 +247,13 @@ function totalBurnForDay(day){
 }
 function savedGymBurnForDay(day){
   return Math.round((state.history||[])
-    .filter(h=>String(h.date||"").slice(0,10)===day)
+    .filter(h=>isoDay(h.date)===day)
     .reduce((a,h)=>a+historyGymBurn(h),0));
 }
 function gymBreakdownForDay(day){
   const sum={stretch:0,strength:0,warmup:0,cardio:0,vibration:0};
   (state.history||[])
-    .filter(h=>String(h.date||"").slice(0,10)===day)
+    .filter(h=>isoDay(h.date)===day)
     .forEach(h=>{
       const b=historyBreakdown(h);
       Object.keys(sum).forEach(k=>sum[k]+=Number(b?.[k]||0));
@@ -331,7 +331,7 @@ function renderWorkoutTracker(){
   const total=gymBurnForDay(day);
   const b=gymBreakdownForDay(day);
   const running=!!session.workoutStartedAt;
-  const savedCount=(state.history||[]).filter(h=>String(h.date||"").slice(0,10)===day).length;
+  const savedCount=(state.history||[]).filter(h=>isoDay(h.date)===day).length;
   box.innerHTML=`
     <div class="burnTrackerTop">
       <div><span class="muted tiny">ジム消費（本日合計・推定）</span><strong>🔥 ${total} kcal</strong></div>
