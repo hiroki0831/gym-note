@@ -1,10 +1,10 @@
 const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
 const AI_PIN_KEY="gym_note_ai_pin";
-const VERSION=11;
+const VERSION=12;
 
 const TEMPLATE={
-  dataVersion:11,
+  dataVersion:12,
   configured:true,
   goals:{weight:65,fat:null,muscle:null,restSeconds:60,calorieGoal:1900,dailyBurn:2300,bmr:1522,activityBurn:550},
   zeroi:[
@@ -245,15 +245,36 @@ function totalBurnForDay(day){
   const gym=gymBurnForDay(day);
   return {bmr,activity,gym,total:Math.round(bmr+activity+gym)};
 }
+function savedGymBurnForDay(day){
+  return Math.round((state.history||[])
+    .filter(h=>String(h.date||"").slice(0,10)===day)
+    .reduce((a,h)=>a+historyGymBurn(h),0));
+}
+function gymBreakdownForDay(day){
+  const sum={stretch:0,strength:0,warmup:0,cardio:0,vibration:0};
+  (state.history||[])
+    .filter(h=>String(h.date||"").slice(0,10)===day)
+    .forEach(h=>{
+      const b=historyBreakdown(h);
+      Object.keys(sum).forEach(k=>sum[k]+=Number(b?.[k]||0));
+    });
+  if(day===todayKey() && sessionHasProgress(session)){
+    const b=estimateGymBurn(session);
+    Object.keys(sum).forEach(k=>sum[k]+=Number(b?.[k]||0));
+  }
+  Object.keys(sum).forEach(k=>sum[k]=Math.round(sum[k]));
+  return sum;
+}
 function quickStats(){
   const b=latestBody();
   const goal=state.goals||{};
-  const burn=estimateGymBurn(session);
+  // v5.5.1: 保存済みの「今日の履歴」も含めた本日合計を表示する。
+  const todayGym=gymBurnForDay(todayKey());
   $("quickStats").innerHTML=`
     <div class="quickStat"><span>最新体重</span><b>${b?.weight!=null?fmt(b.weight)+" kg":"—"}</b></div>
     <div class="quickStat"><span>体脂肪率</span><b>${b?.fat!=null?fmt(b.fat)+" %":"—"}</b></div>
     <div class="quickStat"><span>目標体重</span><b>${goal.weight!=null?fmt(goal.weight)+" kg":"—"}</b></div>
-    <div class="quickStat gymQuick"><span>今日のジム</span><b>🔥 ${burn.total} kcal</b></div>`;
+    <div class="quickStat gymQuick"><span>今日のジム</span><b>🔥 ${todayGym} kcal</b></div>`;
 }
 function previousExercise(id){
   const hs=[...state.history].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -304,12 +325,17 @@ function touchSession(){saveSession();updateProgress()}
 function renderWorkoutTracker(){
   const box=$("workoutTracker");
   if(!box)return;
-  const b=estimateGymBurn(session);
+  const day=todayKey();
+  const current=estimateGymBurn(session);
+  const saved=savedGymBurnForDay(day);
+  const total=gymBurnForDay(day);
+  const b=gymBreakdownForDay(day);
   const running=!!session.workoutStartedAt;
+  const savedCount=(state.history||[]).filter(h=>String(h.date||"").slice(0,10)===day).length;
   box.innerHTML=`
     <div class="burnTrackerTop">
-      <div><span class="muted tiny">ジム消費（推定）</span><strong>🔥 ${b.total} kcal</strong></div>
-      <div class="burnTrackerTime"><span>${running?"経過":"未開始"}</span><b>${running?b.duration+"分":"—"}</b></div>
+      <div><span class="muted tiny">ジム消費（本日合計・推定）</span><strong>🔥 ${total} kcal</strong></div>
+      <div class="burnTrackerTime"><span>${running?"経過":savedCount?"保存済み":"未開始"}</span><b>${running?current.duration+"分":savedCount?savedCount+"回":"—"}</b></div>
     </div>
     <div class="burnBreakdown">
       <span>ZERO-i <b>${b.stretch} kcal</b></span>
@@ -317,8 +343,8 @@ function renderWorkoutTracker(){
       <span>有酸素 <b>${b.cardio} kcal</b></span>
       <span>その他 <b>${b.warmup+b.vibration} kcal</b></span>
     </div>
-    <button id="workoutToggle" class="${running?"sub":"primary"} full">${running?"開始時刻をリセット":"▶ トレーニング開始"}</button>
-    <p class="tiny muted">体重 ${fmt(b.weight)}kg を使った概算。開始を押し忘れても、記録内容から自動推定します。</p>`;
+    <button id="workoutToggle" class="${running?"sub":"primary"} full">${running?"開始時刻をリセット":savedCount?"▶ 追加トレーニング開始":"▶ トレーニング開始"}</button>
+    <p class="tiny muted">本日合計：保存済み ${saved} kcal${sessionHasProgress(session)?` ＋ 入力中 ${current.total} kcal`:""}。体重 ${fmt(current.weight)}kg を使った概算です。</p>`;
   $("workoutToggle").onclick=()=>{
     if(running){
       if(!confirm("トレーニング開始時刻を今にリセットしますか？"))return;
@@ -486,8 +512,13 @@ function startTimer(seconds,label=""){
     }
   },1000);
 }
+function stopTimer(){
+  clearInterval(timerI);
+  timerI=null;timerRemaining=0;timerName="";
+  $("timer").classList.add("hidden");
+}
 $("timerPlus").onclick=()=>{timerRemaining+=30;paintTimer()};
-$("timerX").onclick=()=>{clearInterval(timerI);$("timer").classList.add("hidden")};
+$("timerX").onclick=stopTimer;
 
 $("saveWorkout").onclick=()=>{
   const done=menuExercises().map(e=>({
@@ -527,8 +558,9 @@ $("saveWorkout").onclick=()=>{
   });
 
   state.configured=true;save();clearSession();
+  stopTimer(); // 保存後に休憩タイマーだけ残るのを防ぐ。
   sessionWasRestored=false;session=blankSession();saveSession();
-  renderToday();toast(`保存しました・ジム約${burn.total} kcal`);
+  renderToday();toast(`保存しました・本日ジム約${gymBurnForDay(todayKey())} kcal`);
 };
 
 
