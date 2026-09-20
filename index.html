@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=553">
+  <link rel="stylesheet" href="./styles.css?v=560">
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.5.3 A/B・日付集計修正</b></h1></div>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.6 自宅トレーニング</b></h1></div>
   <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
@@ -24,7 +24,7 @@
     <div>
       <span id="todayDate" class="muted"></span>
       <h2>今日のメニュー</h2>
-      <p>ZERO-i → ウォームアップ → 筋トレ → 有酸素</p>
+      <p id="todayFlow">ZERO-i → ウォームアップ → 筋トレ → 有酸素</p>
     </div>
     <div class="ring" id="ring"><span id="pct">0%</span></div>
   </div>
@@ -44,11 +44,12 @@
   <div id="workoutTracker" class="card burnTracker"></div>
 
   <div class="card menuPicker">
-    <div class="menuPickerHead"><div><small>脂肪を落としながら筋肉を残す</small><strong>A/Bメニュー</strong></div><span>週3回なら A→B→A / 次週 B→A→B</span></div>
-    <div class="menuSeg"><button data-menu="A">A</button><button data-menu="B">B</button></div>
+    <div class="menuPickerHead"><div><small>今日の運動場所を選ぶ</small><strong>トレーニングメニュー</strong></div><span>ジムA/Bと自宅を別々に記録できます</span></div>
+    <div class="menuSeg menuSeg3"><button data-menu="A">ジム A</button><button data-menu="B">ジム B</button><button data-menu="H">🏠 自宅</button></div>
     <p id="menuSummary" class="menuSummary"></p>
   </div>
 
+  <div id="gymWarmupBlock">
   <div class="section-title"><h3>ZERO-i ストレッチ</h3><span>各10回・ゆっくり</span></div>
   <div id="zeroList"></div>
 
@@ -57,12 +58,14 @@
     <div><strong>🚶 ウォーキング</strong><small>5分 / 4.5〜5.0km/h / 傾斜1〜2%</small></div>
     <button class="done" data-special="warmup">完了</button>
   </div>
+  </div>
 
   <div class="section-title">
     <div><h3>筋トレ</h3><span>実際に使う重量へその場で変更できます</span></div>
   </div>
   <div id="exerciseList"></div>
 
+  <div id="gymFinishBlock">
   <div class="section-title"><h3>有酸素</h3><span>筋トレ後</span></div>
   <div class="card">
     <div class="seg">
@@ -83,6 +86,7 @@
   <div class="card row">
     <div><strong>〰️ 振動マシン</strong><small>最後に5分。おまけとして利用。</small></div>
     <button class="done" data-special="vibration">完了</button>
+  </div>
   </div>
 
   <div class="card form">
@@ -287,7 +291,7 @@
 
   <div class="card">
     <h3>アプリ</h3>
-    <p class="muted">PWA版 v5.5.2。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
+    <p class="muted">PWA版 v5.6。ホーム画面から起動でき、今日の入力途中でも自動保存します。</p>
     <button id="checkUpdate" class="sub full">更新を確認</button>
   </div>
 </section>
@@ -304,6 +308,6 @@
 <div id="timer" class="timer hidden"><span id="timerLabel">休憩</span> <b id="timerN">60</b>秒 <button id="timerPlus">＋30</button><button id="timerX">×</button></div>
 <div id="toast" class="toast"></div>
 
-<script src="./app.js?v=553"></script>
+<script src="./app.js?v=560"></script>
 </body>
 </html>
