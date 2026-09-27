@@ -40,7 +40,7 @@ canvas{width:100%;background:#111419;border-radius:12px;display:block}
 .historyCard{padding:0;overflow:hidden}.historyCard summary{list-style:none;padding:14px;cursor:pointer}.historyCard summary::-webkit-details-marker{display:none}.historyCard[open] summary{border-bottom:1px solid var(--line)}.historySummaryRow{display:flex;justify-content:space-between;align-items:center;gap:10px}.historySummaryRow .date b,.historySummaryRow .date small{display:block}.historySummaryRow .date small{color:var(--muted);margin-top:3px}.historySummaryRow .count{color:var(--accent);font-weight:800;font-size:12px}
 .historyBody{padding:12px 14px}.historyDetail div{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12px;color:var(--muted);border-bottom:1px solid #ffffff08}.historyDetail div:last-child{border-bottom:0}.historyDetail b{color:var(--text);text-align:right}.historyNote{margin-top:10px;padding:10px;background:#15191e;border-radius:11px;font-size:12px;line-height:1.5}.historyActions{display:flex;justify-content:flex-end;margin-top:12px}.historyActions button{padding:7px 10px;font-size:11px}
 .stack{display:grid;gap:8px}.file{text-align:center;display:block}
-nav{position:fixed;bottom:0;left:0;right:0;height:72px;padding-bottom:env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(5,1fr);background:rgba(18,21,25,.97);border-top:1px solid var(--line);backdrop-filter:blur(18px);z-index:20}.nav{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;font-size:19px}.nav span{font-size:10px}.nav.active{color:var(--accent)}
+nav{position:fixed;bottom:0;left:0;right:0;height:72px;padding-bottom:env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(6,1fr);background:rgba(18,21,25,.97);border-top:1px solid var(--line);backdrop-filter:blur(18px);z-index:20}.nav{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;font-size:19px}.nav span{font-size:10px}.nav.active{color:var(--accent)}
 .timer{position:fixed;z-index:30;left:50%;bottom:84px;transform:translateX(-50%);background:var(--accent);color:#11160d;padding:9px 13px;border-radius:999px;font-weight:800;white-space:nowrap}.timer button{border:0;background:#0002;border-radius:50%;margin-left:7px;width:27px;height:27px;color:#11160d}
 .hidden{display:none}.toast{position:fixed;z-index:40;left:50%;bottom:135px;transform:translate(-50%,15px);opacity:0;background:#f4f6f7;color:#101216;border-radius:11px;padding:9px 13px;transition:.2s;font-weight:700;text-align:center;max-width:85%}.toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:390px){.grid2{grid-template-columns:1fr}.exerciseTop{gap:6px}.weight{min-width:104px}.quickStat b{font-size:15px}.chartHead{align-items:flex-start;flex-direction:column}.chartHead select{max-width:100%;width:100%}}
@@ -107,3 +107,48 @@ nav{position:fixed;bottom:0;left:0;right:0;height:72px;padding-bottom:env(safe-a
 .homeTarget{min-width:82px;text-align:right}.homeTarget b{display:block;font-size:21px;color:var(--accent)}.homeTarget small{color:var(--muted)}
 .homeCard .setHint{margin-top:9px}.homeCard .previous{margin-top:10px}
 @media(max-width:390px){.menuSeg button{font-size:14px;padding:11px 5px}.homeTarget{min-width:70px}.homeTarget b{font-size:18px}}
+
+/* v5.7 インライン日別グラフ */
+.graphRangeCard{padding:13px}
+.graphPresets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.graphPresets .sub{font-size:12px;padding:10px 4px}
+.graphPresets .sub.active{background:var(--accent);border-color:var(--accent);color:#10160c}
+.graphDates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:11px}
+.graphDates label{font-size:11px;color:var(--muted)}
+.graphDates input{width:100%;margin-top:5px;background:#111419;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 6px;font-size:13px;min-width:0}
+.graphRangeCard p{margin:8px 0 0}
+.graphQuickStats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:11px}
+.graphStat{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:11px;min-width:0}
+.graphStat span{display:block;font-size:11px;color:var(--muted)}
+.graphStat b{font-size:20px;display:block;margin-top:3px;white-space:nowrap}
+.graphStat b small{font-size:10px;margin-left:3px;color:var(--muted)}
+.graphFocusCard{border-color:#4c6d3d;background:linear-gradient(150deg,#202e20,#19211b)}
+.graphFocusCard>strong{display:block;font-size:16px;margin-bottom:10px;color:var(--accent)}
+.graphFocusGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.graphFocusGrid span{font-size:10px;color:var(--muted);border:1px solid #374736;border-radius:10px;background:#121c13;padding:8px;min-width:0}
+.graphFocusGrid b{font-size:13px;color:var(--text);display:block;line-height:1.5;margin-top:4px;word-break:break-word}
+.graphHint{margin:0 4px 13px}
+.graphCard{padding:13px 10px 10px;margin-bottom:12px}
+.graphCard h3{font-size:15px;margin:2px 5px 4px}
+.graphCard>p{font-size:10px;color:var(--muted);line-height:1.5;margin:0 5px 9px}
+.graphCard canvas{width:100%;height:220px;display:block;touch-action:manipulation;background:#14191c;border-radius:10px}
+.graphLegend{display:flex;gap:13px;flex-wrap:wrap;align-items:center;margin:7px 5px;color:var(--muted);font-size:10px}
+.graphDot{display:inline-flex;gap:6px;align-items:center}
+.graphDot:before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--dot)}
+.graphTableCard{padding:12px 0 0;overflow:hidden}
+.graphTableHead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px 8px}
+.graphTableHead h3{font-size:17px;margin:0}
+.graphTableScroll{max-height:410px;overflow:auto;overscroll-behavior:contain}
+.graphDailyTable{border-collapse:collapse;font-size:11px;white-space:nowrap;width:100%}
+.graphDailyTable th,.graphDailyTable td{padding:10px 9px;text-align:right;border-bottom:1px solid var(--line)}
+.graphDailyTable th:first-child,.graphDailyTable td:first-child{text-align:left;position:sticky;left:0;background:#171d20;z-index:1}
+.graphDailyTable th{position:sticky;top:0;background:#263026;color:#cde7bd;z-index:2}
+.graphDailyTable th:first-child{z-index:3;background:#263026}
+.graphDailyTable tbody tr:nth-child(even){background:#1a1e23}
+.graphDayBtn{border:0;background:transparent;color:#b9eea5;font-weight:700;padding:0;min-width:60px;text-align:left}
+.graphDayBtn.selected{color:var(--text);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
+.graphCaution{font-size:10px;line-height:1.65}
+@media(max-width:390px){nav .nav span{font-size:9px}.graphFocusGrid b{font-size:12px}.graphStat b{font-size:18px}}
+
+/* トレーニングしていない時は休憩バナーを表示しない */
+.timer.hidden{display:none!important}

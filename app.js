@@ -168,6 +168,7 @@ function page(id){
   window.scrollTo(0,0);
   if(id==="food")renderFood();
   if(id==="history")renderHistory();
+  if(id==="graphs")renderGraphs();
   if(id==="body")renderBody();
   if(id==="settings")renderSettings();
 }
@@ -1023,13 +1024,13 @@ async function registerSW(){
       if(reloading)return;reloading=true;
       location.reload();
     });
-    const r=await navigator.serviceWorker.register("./sw.js?v=561",{updateViaCache:"none"});
+    const r=await navigator.serviceWorker.register("./sw.js?v=570",{updateViaCache:"none"});
     await r.update().catch(()=>{});
     $("checkUpdate").onclick=async()=>{
       try{
         toast("最新版を確認しています…");
         await r.update();
-        setTimeout(()=>location.replace(`./index.html?v=561&refresh=${Date.now()}`),500);
+        setTimeout(()=>location.replace(`./index.html?v=570&refresh=${Date.now()}`),500);
       }catch(e){toast("更新確認に失敗しました")}
     };
   }catch(e){}
@@ -1038,6 +1039,7 @@ window.addEventListener("load",registerSW);
 window.addEventListener("resize",()=>{
   if($("history").classList.contains("active"))drawStrengthChart();
   if($("body").classList.contains("active"))drawBodyChart();
+  if($("graphs").classList.contains("active"))drawGraphCharts();
 });
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")saveSession()});
 
@@ -1049,3 +1051,238 @@ setInterval(()=>{
 },30000);
 
 renderToday();
+
+// ---------- v5.7 日別グラフ（外部ライブラリ不要・端末の保存データを再集計） ----------
+let graphRows=[];
+let graphFocusDay="";
+const GRAPH_SPECS=[
+  {id:"graphCalories",kind:"line",zero:true,series:[{key:"intake",color:"#a8ef70"},{key:"burn",color:"#65b7ff"}]},
+  {id:"graphBalance",kind:"bar",signed:true,series:[{key:"balance",color:"#a8ef70",negative:"#ff9aa0"}]},
+  {id:"graphGym",kind:"bar",series:[{key:"gymKcal",color:"#a8ef70"},{key:"homeKcal",color:"#ffbd70"}]},
+  {id:"graphWalk",kind:"bar",series:[{key:"walkMin",color:"#65b7ff"}]},
+  {id:"graphAttendance",kind:"bar",integer:true,series:[{key:"gymSessions",color:"#a8ef70"},{key:"homeSessions",color:"#ffbd70"}]},
+  {id:"graphDuration",kind:"bar",series:[{key:"duration",color:"#a8ef70"}]},
+  {id:"graphWeight",kind:"line",connectGaps:true,series:[{key:"weight",color:"#a8ef70"}]},
+  {id:"graphPfc",kind:"line",zero:true,series:[{key:"protein",color:"#a8ef70"},{key:"fat",color:"#ffbd70"},{key:"carbs",color:"#65b7ff"}]}
+];
+const chartNum=x=>typeof x==="number"&&Number.isFinite(x)?x:null;
+const graphFmt=(x,digits=0)=>x==null?"—":Number(x).toLocaleString("ja-JP",{minimumFractionDigits:digits,maximumFractionDigits:digits});
+const chartDate=d=>String(d||"").replace(/^\d{4}-/,"").replace("-","/");
+
+function graphDailyData(start,end){
+  const dates=daysInclusive(start,end);
+  const byDay=new Map(dates.map(date=>[date,{
+    date,hasFood:false,intake:null,protein:null,fat:null,carbs:null,
+    gymSessions:0,homeSessions:0,gymKcal:0,homeKcal:0,missingGym:0,missingHome:0,
+    walkMin:0,bikeMin:0,duration:0,weight:null
+  }]));
+  (state.foods||[]).forEach(f=>{
+    const r=byDay.get(foodDay(f));if(!r)return;
+    if(!r.hasFood){r.intake=0;r.hasFood=true}
+    r.intake+=Number(f.kcal)||0;
+    ["protein","fat","carbs"].forEach(k=>{
+      if(f[k]!=null&&f[k]!==""&&Number.isFinite(Number(f[k]))){r[k]=(r[k]??0)+Number(f[k])}
+    });
+  });
+  (state.history||[]).forEach(h=>{
+    const r=byDay.get(isoDay(h.date||h.workoutEndedAt));if(!r)return;
+    const isHome=h.menu==="HOME"||(!h.menu&&(h.exercises||[]).length>0&&(h.exercises||[]).every(e=>e.home));
+    const kcal=Number(h.gymCalories);
+    const hasKcal=h.gymCalories!=null&&Number.isFinite(kcal)&&kcal>0;
+    if(isHome){r.homeSessions++;if(hasKcal)r.homeKcal+=kcal;else r.missingHome++}
+    else{r.gymSessions++;if(hasKcal)r.gymKcal+=kcal;else r.missingGym++}
+    if(h.cardio){
+      const minutes=Math.max(0,Number(h.cardioMinutes)||0);
+      if(h.cardioType==="bike")r.bikeMin+=minutes;
+      else r.walkMin+=minutes;
+    }
+    r.duration+=Math.max(0,Number(h.durationMinutes)||0);
+  });
+  // 同じ日が複数あるときは最後に記録された有効な体重を表示する。
+  (state.body||[]).forEach(b=>{
+    const r=byDay.get(String(b.date||"").slice(0,10));
+    if(r&&b.weight!=null&&b.weight!==""&&Number.isFinite(Number(b.weight)))r.weight=Number(b.weight);
+  });
+  const bmr=Number(state.goals?.bmr)||1504;
+  const activity=Number.isFinite(Number(state.goals?.activityBurn))?Number(state.goals.activityBurn):550;
+  return dates.map(date=>{
+    const r=byDay.get(date),hasWorkout=r.gymSessions+r.homeSessions>0,missing=r.missingGym+r.missingHome>0;
+    r.gymKcal=r.gymSessions&&r.missingGym===r.gymSessions?null:r.gymKcal;
+    r.homeKcal=r.homeSessions&&r.missingHome===r.homeSessions?null:r.homeKcal;
+    r.exerciseKcal=missing?null:(r.gymKcal||0)+(r.homeKcal||0);
+    r.burn=missing?null:Math.round(bmr+activity+r.exerciseKcal);
+    r.balance=r.hasFood&&r.burn!=null?Math.round(r.intake-r.burn):null;
+    r.hasWorkout=hasWorkout;
+    return r;
+  });
+}
+
+function graphPreset(preset){
+  const today=todayKey(),known=historyKnownDays();
+  $("graphEnd").value=today;
+  $("graphStart").value=preset==="all"?(known[0]||today):addDays(today,-(Number(preset)-1));
+  document.querySelectorAll("[data-graph-days]").forEach(b=>b.classList.toggle("active",b.dataset.graphDays===String(preset)));
+  renderGraphs();
+}
+function graphRange(){
+  const today=todayKey(),startEl=$("graphStart"),endEl=$("graphEnd");
+  startEl.max=today;endEl.max=today;
+  if(!startEl.value||!endEl.value){startEl.value=addDays(today,-29);endEl.value=today}
+  let start=startEl.value,end=endEl.value;
+  if(end>today){end=today;endEl.value=today}
+  if(start>end){[start,end]=[end,start];startEl.value=start;endEl.value=end}
+  if(daysInclusive(start,end).length>=4000){start=addDays(end,-3999);startEl.value=start}
+  return {start,end};
+}
+function renderGraphs(){
+  const {start,end}=graphRange();
+  graphRows=graphDailyData(start,end);
+  $("graphRangeNote").textContent=`${start.replaceAll("-","/")} 〜 ${end.replaceAll("-","/")}（${graphRows.length}日）`;
+  const gymDays=graphRows.filter(r=>r.gymSessions>0).length;
+  const homeDays=graphRows.filter(r=>r.homeSessions>0).length;
+  const walk=graphRows.reduce((s,r)=>s+r.walkMin,0);
+  const gymKcal=graphRows.reduce((s,r)=>s+(r.gymKcal||0)+(r.homeKcal||0),0);
+  const food=graphRows.filter(r=>r.hasFood);
+  $("graphQuickStats").innerHTML=`
+    <div class="graphStat"><span>ジムに行った日</span><b>${gymDays}<small>日</small></b></div>
+    <div class="graphStat"><span>自宅トレの日</span><b>${homeDays}<small>日</small></b></div>
+    <div class="graphStat"><span>ウォーキング</span><b>${graphFmt(walk)}<small>分</small></b></div>
+    <div class="graphStat"><span>運動消費（記録済み）</span><b>${graphFmt(gymKcal)}<small>kcal</small></b></div>
+    <div class="graphStat"><span>食事を記録した日</span><b>${food.length}<small>日</small></b></div>
+    <div class="graphStat"><span>記録日の平均摂取</span><b>${food.length?graphFmt(Math.round(food.reduce((s,r)=>s+r.intake,0)/food.length)):"—"}<small>kcal</small></b></div>`;
+  if(!graphRows.some(r=>r.date===graphFocusDay)){
+    const recent=[...graphRows].reverse().find(r=>r.hasFood||r.hasWorkout||r.weight!=null);
+    graphFocusDay=recent?.date||graphRows.at(-1)?.date||"";
+  }
+  graphDayTable();
+  graphDayFocus();
+  // ページが表示された時点でcanvasの幅が取得できる。
+  drawGraphCharts();
+}
+function graphDayFocus(){
+  const r=graphRows.find(x=>x.date===graphFocusDay);
+  if(!r){$("graphFocus").innerHTML='<strong>表示期間にデータがありません</strong>';return}
+  const total=(r.gymKcal||0)+(r.homeKcal||0);
+  const incomplete=r.missingGym+r.missingHome;
+  $("graphFocus").innerHTML=`
+    <strong>選択中：${escapeHtml(r.date.replaceAll("-","/"))}</strong>
+    <div class="graphFocusGrid">
+      <span>摂取 <b>${r.hasFood?graphFmt(Math.round(r.intake))+" kcal":"未記録"}</b></span>
+      <span>推定総消費 <b>${r.burn==null?"未算定":graphFmt(r.burn)+" kcal"}</b></span>
+      <span>収支 <b>${r.balance==null?"—":(r.balance>0?"+":"")+graphFmt(r.balance)+" kcal"}</b></span>
+      <span>運動消費 <b>${r.hasWorkout?(incomplete&&r.exerciseKcal==null?"未算定":graphFmt(total)+" kcal"+(incomplete?"（一部未算定）":"")):"記録なし"}</b></span>
+      <span>ジム／自宅 <b>${r.gymSessions}回 ／ ${r.homeSessions}回</b></span>
+      <span>歩行／バイク <b>${r.walkMin}分 ／ ${r.bikeMin}分</b></span>
+      <span>運動時間 <b>${r.hasWorkout?graphFmt(r.duration)+"分":"記録なし"}</b></span>
+      <span>体重 <b>${r.weight==null?"未記録":graphFmt(r.weight,1)+" kg"}</b></span>
+      <span>P / F / C <b>${[r.protein,r.fat,r.carbs].some(x=>x!=null)?[r.protein,r.fat,r.carbs].map(x=>x==null?"—":graphFmt(Math.round(x))).join(" / ")+" g":"未記録"}</b></span>
+    </div>`;
+  document.querySelectorAll("[data-graph-day]").forEach(b=>b.classList.toggle("selected",b.dataset.graphDay===graphFocusDay));
+}
+function graphDayTable(){
+  $("graphDayRows").innerHTML=[...graphRows].reverse().map(r=>{
+    const missing=r.missingGym+r.missingHome;
+    const workout=r.gymSessions+r.homeSessions;
+    const exercise=workout?(r.gymKcal||0)+(r.homeKcal||0):0;
+    const text=(n)=>n==null?"—":graphFmt(n);
+    return `<tr><td><button class="graphDayBtn" data-graph-day="${escapeHtml(r.date)}">${escapeHtml(chartDate(r.date))}${r.gymSessions?" 🏋️":""}${r.homeSessions?" 🏠":""}</button></td><td>${r.hasFood?text(Math.round(r.intake)):"—"}</td><td>${text(r.burn)}</td><td>${r.balance==null?"—":(r.balance>0?"+":"")+text(r.balance)}</td><td>${workout?(missing&&r.exerciseKcal==null?"未算定":text(exercise)+(missing?"*":"")):"—"}</td><td>${workout?text(r.walkMin):"—"}</td><td>${workout?text(r.duration):"—"}</td><td>${r.weight==null?"—":graphFmt(r.weight,1)}</td></tr>`;
+  }).join("");
+  document.querySelectorAll("[data-graph-day]").forEach(b=>b.onclick=()=>{
+    graphFocusDay=b.dataset.graphDay;
+    graphDayFocus();drawGraphCharts();
+    $("graphFocus").scrollIntoView({behavior:"smooth",block:"nearest"});
+  });
+}
+function graphCanvas(spec,rows){
+  const el=$(spec.id),ctx=el?.getContext("2d");if(!ctx)return;
+  const w=Math.max(250,el.getBoundingClientRect().width||320),h=220,dpr=Math.min(2,window.devicePixelRatio||1);
+  el.width=Math.round(w*dpr);el.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const L=44,R=10,T=16,B=34,pw=w-L-R,ph=h-T-B;
+  const n=rows.length,series=spec.series;
+  const vals=rows.flatMap(r=>series.map(s=>chartNum(r[s.key]))).filter(x=>x!=null);
+  const grid="#303941",axis="#99a5ae",zero=spec.zero||spec.kind==="bar";
+  let lo=vals.length?Math.min(...vals):0,hi=vals.length?Math.max(...vals):1;
+  if(spec.signed){lo=Math.min(0,lo);hi=Math.max(0,hi)}
+  else if(spec.id!=="graphWeight")lo=0;
+  if(hi===lo){hi+=hi===0?1:Math.max(1,Math.abs(hi)*0.04);if(!zero)lo-=1}
+  if(spec.id==="graphWeight"){
+    const pad=Math.max(.3,(hi-lo)*.2);lo=Math.max(0,lo-pad);hi+=pad;
+  } else if(spec.signed){
+    const p=Math.max(25,(hi-lo)*.08);lo-=p;hi+=p;
+  } else hi*=1.1;
+  if(spec.integer){lo=0;hi=Math.max(1,Math.ceil(hi))}
+  const Y=x=>T+ph-(x-lo)/(hi-lo)*ph;
+  const X=i=>L+(i+.5)*pw/Math.max(1,n);
+  ctx.textAlign="right";ctx.font="10px system-ui, sans-serif";
+  for(let k=0;k<5;k++){
+    const v=lo+(hi-lo)*k/4,y=Y(v);
+    ctx.strokeStyle=grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(L,y);ctx.lineTo(w-R,y);ctx.stroke();
+    ctx.fillStyle=axis;ctx.fillText(spec.integer?String(Math.round(v)):Math.abs(v)>=1000?`${(v/1000).toFixed(1)}k`:Math.abs(v)>=100?Math.round(v):Math.round(v*10)/10,L-6,y+3);
+  }
+  if(lo<0&&hi>0){ctx.strokeStyle="#8a949a";ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(L,Y(0));ctx.lineTo(w-R,Y(0));ctx.stroke();ctx.setLineDash([])}
+  ctx.textAlign="center";ctx.fillStyle=axis;
+  const ticks=Math.min(6,n);
+  for(let i=0;i<ticks;i++){
+    const ix=ticks===1?0:Math.round(i*(n-1)/(ticks-1));
+    ctx.fillText(chartDate(rows[ix].date),X(ix),h-12);
+  }
+  series.forEach((s,si)=>{
+    ctx.strokeStyle=s.color;ctx.fillStyle=s.color;
+    if(spec.kind==="bar"){
+      const slot=pw/Math.max(1,n),groupW=Math.min(34,slot*.74),bw=Math.max(1,groupW/series.length-1.1);
+      rows.forEach((r,i)=>{
+        const v=chartNum(r[s.key]);if(v==null)return;
+        const center=X(i),x=center-groupW/2+si*groupW/series.length;
+        const from=Y(0),to=Y(v),top=Math.min(from,to);
+        ctx.fillStyle=v<0?(s.negative||"#ff9aa0"):s.color;
+        ctx.fillRect(x,top,Math.max(1,bw),Math.max(1,Math.abs(to-from)));
+      });
+    }else{
+      ctx.lineWidth=2;ctx.beginPath();let started=false;
+      rows.forEach((r,i)=>{
+        const v=chartNum(r[s.key]);
+        if(v==null){if(!spec.connectGaps)started=false;return}
+        const x=X(i),y=Y(v);
+        if(!started){ctx.moveTo(x,y);started=true}else ctx.lineTo(x,y);
+      });ctx.stroke();
+      rows.forEach((r,i)=>{
+        const v=chartNum(r[s.key]);if(v==null)return;
+        ctx.beginPath();ctx.arc(X(i),Y(v),n>65?1.5:2.5,0,2*Math.PI);ctx.fill();
+      });
+    }
+  });
+  const selectedIndex=rows.findIndex(r=>r.date===graphFocusDay);
+  if(selectedIndex>=0){
+    const x=X(selectedIndex);ctx.strokeStyle="#e9f7d7";ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(x,T);ctx.lineTo(x,T+ph);ctx.stroke();ctx.setLineDash([]);
+  }
+  if(!vals.length){ctx.fillStyle="#99a5ae";ctx.textAlign="center";ctx.font="13px system-ui, sans-serif";ctx.fillText("この期間に記録がありません",w/2,h/2)}
+  // 同じ位置換算で、タップした日の情報を全グラフで選択できる。
+  el._graphCoordinates={L,pw,n};
+}
+function drawGraphCharts(){
+  if(!$('graphs')?.classList.contains('active')||!graphRows.length)return;
+  GRAPH_SPECS.forEach(spec=>graphCanvas(spec,graphRows));
+}
+function exportGraphCsv(){
+  const headers=["日付","食事記録あり","摂取kcal","推定総消費kcal","収支kcal","ジム記録回数","自宅記録回数","運動消費kcal（判明分）","運動消費未算定回数","ウォーキング分（ウォームアップ除く）","バイク分","運動滞在分","体重kg","タンパク質g","脂質g","炭水化物g"];
+  const rows=graphRows.map(r=>[
+    r.date,r.hasFood?"はい":"いいえ",r.intake??"",r.burn??"",r.balance??"",r.gymSessions,r.homeSessions,
+    r.hasWorkout?(r.gymKcal||0)+(r.homeKcal||0):"",r.missingGym+r.missingHome,
+    r.hasWorkout?r.walkMin:"",r.hasWorkout?r.bikeMin:"",r.hasWorkout?r.duration:"",r.weight??"",r.protein??"",r.fat??"",r.carbs??""
+  ]);
+  const csv="\uFEFF"+[headers,...rows].map(a=>a.map(csvCell).join(",")).join("\r\n");
+  downloadBlob(csv,"text/csv;charset=utf-8",`gym-note-daily-graphs-${todayKey()}.csv`);
+}
+document.querySelectorAll("[data-graph-days]").forEach(b=>b.addEventListener("click",()=>graphPreset(b.dataset.graphDays)));
+["graphStart","graphEnd"].forEach(id=>$(id).addEventListener("change",()=>{
+  document.querySelectorAll("[data-graph-days]").forEach(b=>b.classList.remove("active"));
+  renderGraphs();
+}));
+$("graphCsvBtn").addEventListener("click",exportGraphCsv);
+GRAPH_SPECS.forEach(spec=>$(spec.id).addEventListener("click",event=>{
+  const canvas=event.currentTarget,rect=canvas.getBoundingClientRect(),data=canvas._graphCoordinates;
+  if(!data?.n)return;
+  const rel=(event.clientX-rect.left)*((canvas.clientWidth||rect.width)/rect.width);
+  const idx=Math.min(data.n-1,Math.max(0,Math.floor((rel-data.L)/data.pw*data.n)));
+  graphFocusDay=graphRows[idx].date;graphDayFocus();drawGraphCharts();
+}));
