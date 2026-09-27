@@ -10,11 +10,11 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=570">
+  <link rel="stylesheet" href="./styles.css?v=571">
 </head>
 <body>
 <header class="top">
-  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.7 グラフ・日別分析</b></h1></div>
+  <div><small>GYM NOTE</small><h1>ジムノート <b>v5.7.1 グラフ＋自動保存</b></h1></div>
   <button id="installBtn" class="sub compact" hidden>インストール</button>
 </header>
 
@@ -81,6 +81,10 @@
         <button class="mini" data-cardio-min="5">＋5</button>
       </div>
       <button class="primary full" id="cardioDone">有酸素を完了</button>
+      <div id="autoSaveNotice" class="autoSaveNotice" role="status" hidden>
+        <strong id="autoSaveMessage">有酸素完了から10分後に自動保存</strong>
+        <button id="autoSaveControl" class="sub compact" type="button">自動保存を取り消す</button>
+      </div>
     </div>
 
     <div class="card row">
@@ -95,7 +99,8 @@
     </label>
   </div>
 
-  <button id="saveWorkout" class="primary full save">今日のトレーニングを保存</button>
+  <button id="saveWorkout" class="primary full save">今すぐトレーニングを保存</button>
+  <p class="autoSaveHint">有酸素完了を押すと10分後に自動保存。アプリが閉じている間に期限が来た場合は、次に開いたとき保存します。</p>
   <p class="caution">痛みが出た種目は中止。フォームを崩してまで重量・回数を合わせないでください。</p>
 </section>
 
@@ -347,6 +352,6 @@
 <div id="timer" class="timer hidden"><span id="timerLabel">休憩</span> <b id="timerN">60</b>秒 <button id="timerPlus">＋30</button><button id="timerX">×</button></div>
 <div id="toast" class="toast"></div>
 
-<script src="./app.js?v=570"></script>
+<script src="./app.js?v=571"></script>
 </body>
 </html>

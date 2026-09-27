@@ -2,6 +2,7 @@ const APP_KEY="gym_note_data";
 const SESSION_KEY="gym_note_session_v4";
 const AI_PIN_KEY="gym_note_ai_pin";
 const VERSION=13;
+const AUTO_SAVE_DELAY_MS=10*60*1000; // 有酸素完了から10分
 
 const TEMPLATE={
   dataVersion:13,
@@ -124,7 +125,8 @@ function blankSession(){
     workoutStartedAt:null,
     menu:suggestedMenu(),sets,weights,setReps,zeroi,efforts:{},
     warmup:false,cardio:false,cardioType:"walk",cardioMinutes:25,
-    vibration:false,note:""
+    vibration:false,note:"",
+    cardioFinishedAt:null,autoSaveAt:null,autoSaveCancelled:false
   };
 }
 function sessionHasProgress(s){
@@ -136,7 +138,9 @@ function sessionHasProgress(s){
 function loadSession(){
   try{
     const s=JSON.parse(localStorage.getItem(SESSION_KEY));
-    if(!s||s.date!==todayKey()) return blankSession();
+    // 前夜に有酸素を終えた場合も、翌朝の再起動時に自動保存を実行できるよう保持。
+    const pending=!!(s?.cardio && Number.isFinite(Number(s.autoSaveAt)) && Number(s.autoSaveAt)>0 && !s.autoSaveCancelled);
+    if(!s||(s.date!==todayKey()&&!pending)) return blankSession();
     const fresh=blankSession();
     Object.assign(fresh,s);
     if(["home","自宅","H"].includes(fresh.menu)) fresh.menu="HOME";
@@ -242,7 +246,7 @@ function historyGymBurn(h){
 }
 function gymBurnForDay(day){
   let total=(state.history||[]).filter(h=>isoDay(h.date)===day).reduce((a,h)=>a+historyGymBurn(h),0);
-  if(day===todayKey() && sessionHasProgress(session)) total+=estimateGymBurn(session).total;
+  if(day===todayKey() && session.date===day && sessionHasProgress(session)) total+=estimateGymBurn(session).total;
   return Math.round(total);
 }
 function totalBurnForDay(day){
@@ -264,7 +268,7 @@ function gymBreakdownForDay(day){
       const b=historyBreakdown(h);
       Object.keys(sum).forEach(k=>sum[k]+=Number(b?.[k]||0));
     });
-  if(day===todayKey() && sessionHasProgress(session)){
+  if(day===todayKey() && session.date===day && sessionHasProgress(session)){
     const b=estimateGymBurn(session);
     Object.keys(sum).forEach(k=>sum[k]+=Number(b?.[k]||0));
   }
@@ -368,6 +372,7 @@ function renderToday(){
   $("resumeNotice").hidden=!sessionWasRestored;
   quickStats();
   renderWorkoutTracker();
+  renderAutoSaveNotice();
 
   const md=menuDef();
   const isHome=session.menu==="HOME";
@@ -387,7 +392,10 @@ function renderToday(){
         state.exercises.forEach(e=>{session.sets[e.id]=Array(e.sets).fill(false);session.setReps[e.id]=Array(e.sets).fill(Number(e.reps)||10)});
         session.efforts={};
       }
+      // メニューを変えた後、古いメニューで意図せず保存しないよう一時停止。
+      if(session.autoSaveAt){session.autoSaveAt=null;session.autoSaveCancelled=true}
       if(next==="HOME"){
+        session.cardioFinishedAt=null;session.autoSaveAt=null;session.autoSaveCancelled=false;
         Object.keys(session.zeroi||{}).forEach(k=>session.zeroi[k]=false);
         session.warmup=false;session.cardio=false;session.vibration=false;
       }
@@ -527,7 +535,22 @@ function renderToday(){
     sessionWasRestored=false;touchSession();renderToday();
   });
   $("cardioDone").textContent=session.cardio?"有酸素 完了 ✓":"有酸素を完了";
-  $("cardioDone").onclick=()=>{ensureWorkoutStarted();session.cardio=!session.cardio;sessionWasRestored=false;touchSession();renderToday()};
+  $("cardioDone").onclick=()=>{
+    ensureWorkoutStarted();
+    session.cardio=!session.cardio;
+    if(session.cardio){
+      session.cardioFinishedAt=new Date().toISOString();
+      session.autoSaveAt=Date.now()+AUTO_SAVE_DELAY_MS;
+      session.autoSaveCancelled=false;
+    }else{
+      // 完了を取り消せば、保留中の自動保存もキャンセル。
+      session.cardioFinishedAt=null;
+      session.autoSaveAt=null;
+      session.autoSaveCancelled=false;
+    }
+    sessionWasRestored=false;touchSession();renderToday();
+    if(session.cardio)toast("10分後に自動保存します");
+  };
 
   $("sessionNote").value=session.note||"";
   $("sessionNote").oninput=()=>{session.note=$("sessionNote").value;sessionWasRestored=false;saveSession()};
@@ -562,7 +585,50 @@ function stopTimer(){
 $("timerPlus").onclick=()=>{timerRemaining+=30;paintTimer()};
 $("timerX").onclick=stopTimer;
 
-$("saveWorkout").onclick=()=>{
+// 有酸素を終えた10分後に自動保存。画面を離れても期限を端末内に保持する。
+function autoSaveDeadline(){
+  const n=Number(session?.autoSaveAt);
+  return session?.cardio && !session?.autoSaveCancelled && Number.isFinite(n) && n>0?n:0;
+}
+function renderAutoSaveNotice(){
+  const notice=$("autoSaveNotice"),info=$("autoSaveMessage"),btn=$("autoSaveControl");
+  if(!notice)return;
+  const deadline=autoSaveDeadline();
+  const paused=session?.cardio && session?.autoSaveCancelled;
+  const lastAuto=(state.history||[]).find(h=>h.autoSaved && isoDay(h.date)===todayKey());
+  notice.hidden=!deadline&&!paused&&!lastAuto;
+  if(deadline){
+    const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+    const m=String(Math.floor(left/60)).padStart(2,"0"),s=String(left%60).padStart(2,"0");
+    info.textContent=`有酸素完了！ あと ${m}:${s} で今日のトレーニングを自動保存します。`;
+    btn.textContent="自動保存を取り消す";
+    btn.hidden=false;
+    btn.onclick=()=>{
+      session.autoSaveAt=null;session.autoSaveCancelled=true;
+      saveSession();renderAutoSaveNotice();
+      toast("自動保存を停止しました");
+    };
+  }else if(paused){
+    info.textContent="自動保存は停止中です。手動で保存するか、自動保存を再開できます。";
+    btn.textContent="10分タイマーを再開";
+    btn.hidden=false;
+    btn.onclick=()=>{
+      session.autoSaveAt=Date.now()+AUTO_SAVE_DELAY_MS;
+      session.autoSaveCancelled=false;
+      saveSession();renderAutoSaveNotice();
+    };
+  }else if(lastAuto){
+    info.textContent="前のトレーニングは自動保存済みです。履歴やグラフに反映されています。";
+    btn.hidden=true;
+  }
+}
+function maybeAutoFinish(){
+  const deadline=autoSaveDeadline();
+  if(!deadline || Date.now()<deadline)return false;
+  return finishWorkout({automatic:true});
+}
+function finishWorkout({automatic=false}={}){
+  if(automatic && (!autoSaveDeadline() || Date.now()<autoSaveDeadline()))return false;
   const done=menuExercises().map(e=>({
     id:e.id,name:e.name,weight:e.home?null:Number(session.weights[e.id]??e.weight),
     reps:e.reps,setsDone:(session.sets[e.id]||[]).filter(Boolean).length,
@@ -570,12 +636,28 @@ $("saveWorkout").onclick=()=>{
     restSeconds:exerciseRest(e),effort:e.home?"":(session.efforts[e.id]||""),home:!!e.home,countUnit:e.countUnit||"回"
   })).filter(e=>e.setsDone>0);
 
-  if(!done.length){toast("筋トレを1種目以上記録してください");return}
-
-  const workoutEndedAt=new Date().toISOString();
+  if(!done.length && !session.cardio && !session.warmup && !session.vibration && !Object.values(session.zeroi||{}).some(Boolean)){
+    if(!automatic)toast("トレーニングを1つ以上記録してください");
+    return false;
+  }
+  // 別タブですでに同じセッションを保存していたら二重登録を避ける。
+  try{
+    const disk=JSON.parse(localStorage.getItem(APP_KEY)||"{}");
+    if((disk.history||[]).some(h=>h.sessionId===session.startedAt)){
+      state=migrate(disk);clearSession();session=blankSession();saveSession();stopTimer();renderToday();
+      return true;
+    }
+  }catch(e){}
+  // 10分間の放置時間は運動時間・消費カロリーに含めない。
+  // 自動保存が翌日になっても、運動を終えた日付で記録する。
+  const workoutEndedAt=automatic && session.cardioFinishedAt
+    ?session.cardioFinishedAt:new Date().toISOString();
   const burn=estimateGymBurn(session,workoutEndedAt);
   state.history.unshift({
     id:Date.now(),
+    sessionId:session.startedAt,
+    autoSaved:automatic,
+    savedAt:new Date().toISOString(),
     date:workoutEndedAt,
     workoutStartedAt:session.workoutStartedAt||null,
     workoutEndedAt,
@@ -603,8 +685,13 @@ $("saveWorkout").onclick=()=>{
   state.configured=true;save();clearSession();
   stopTimer(); // 保存後に休憩タイマーだけ残るのを防ぐ。
   sessionWasRestored=false;session=blankSession();saveSession();
-  renderToday();toast(`保存しました・本日ジム約${gymBurnForDay(todayKey())} kcal`);
-};
+  renderToday();
+  if($("history")?.classList.contains("active"))renderHistory();
+  if($("graphs")?.classList.contains("active"))renderGraphs();
+  toast(automatic?"有酸素完了から10分：トレーニングを自動保存しました":`保存しました・本日ジム約${gymBurnForDay(todayKey())} kcal`);
+  return true;
+}
+$("saveWorkout").onclick=()=>finishWorkout();
 
 
 // ---------- 食事・カロリー v5 ----------
@@ -1001,14 +1088,14 @@ $("importFile").onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
     state=migrate(JSON.parse(await f.text()));save();
-    clearSession();session=blankSession();saveSession();
+    clearSession();session=blankSession();saveSession();stopTimer();
     renderToday();toast("データを読み込みました");
   }catch(err){toast("JSONを読み込めませんでした")}
   e.target.value="";
 };
 $("resetBtn").onclick=()=>{
   if(!confirm("この端末内の履歴・身体データを初期化しますか？"))return;
-  state=clone(TEMPLATE);save();clearSession();session=blankSession();saveSession();renderToday();toast("初期化しました");
+  state=clone(TEMPLATE);save();clearSession();session=blankSession();saveSession();stopTimer();renderToday();toast("初期化しました");
 };
 
 window.addEventListener("beforeinstallprompt",e=>{
@@ -1024,13 +1111,13 @@ async function registerSW(){
       if(reloading)return;reloading=true;
       location.reload();
     });
-    const r=await navigator.serviceWorker.register("./sw.js?v=570",{updateViaCache:"none"});
+    const r=await navigator.serviceWorker.register("./sw.js?v=571",{updateViaCache:"none"});
     await r.update().catch(()=>{});
     $("checkUpdate").onclick=async()=>{
       try{
         toast("最新版を確認しています…");
         await r.update();
-        setTimeout(()=>location.replace(`./index.html?v=570&refresh=${Date.now()}`),500);
+        setTimeout(()=>location.replace(`./index.html?v=571&refresh=${Date.now()}`),500);
       }catch(e){toast("更新確認に失敗しました")}
     };
   }catch(e){}
@@ -1041,7 +1128,16 @@ window.addEventListener("resize",()=>{
   if($("body").classList.contains("active"))drawBodyChart();
   if($("graphs").classList.contains("active"))drawGraphCharts();
 });
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")saveSession()});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden")saveSession();
+  else if(!maybeAutoFinish()){renderAutoSaveNotice();quickStats()}
+});
+// バックグラウンドで止められた場合も、復帰した直後に期限切れを確定する。
+window.addEventListener("pageshow",()=>{if(!maybeAutoFinish())renderAutoSaveNotice()});
+window.addEventListener("focus",()=>{if(!maybeAutoFinish())renderAutoSaveNotice()});
+setInterval(()=>{
+  if(!maybeAutoFinish())renderAutoSaveNotice();
+},1000);
 
 setInterval(()=>{
   if($("today")?.classList.contains("active") && session.workoutStartedAt){
@@ -1050,7 +1146,7 @@ setInterval(()=>{
   if($("food")?.classList.contains("active"))renderFood();
 },30000);
 
-renderToday();
+if(!maybeAutoFinish())renderToday();
 
 // ---------- v5.7 日別グラフ（外部ライブラリ不要・端末の保存データを再集計） ----------
 let graphRows=[];
