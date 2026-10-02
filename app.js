@@ -124,7 +124,7 @@ function blankSession(){
     startedAt:new Date().toISOString(),
     workoutStartedAt:null,
     menu:suggestedMenu(),sets,weights,setReps,zeroi,efforts:{},
-    warmup:false,cardio:false,cardioType:"walk",cardioMinutes:25,
+    warmup:false,warmupMinutes:5,cardio:false,cardioType:"walk",cardioMinutes:25,
     vibration:false,note:"",
     cardioFinishedAt:null,autoSaveAt:null,autoSaveCancelled:false
   };
@@ -153,7 +153,7 @@ function loadSession(){
       if(!Array.isArray(fresh.setReps[e.id])) fresh.setReps[e.id]=Array(e.sets).fill(Number(e.reps)||10);
       while(fresh.setReps[e.id].length<e.sets)fresh.setReps[e.id].push(Number(e.reps)||10);
     });
-    state.zeroi.forEach(z=>{if(fresh.zeroi[z.id]==null)fresh.zeroi[z.id]=false});
+    state.zeroi.forEach(z=>{if(fresh.zeroi[z.id]==null)fresh.zeroi[z.id]=false});\n    fresh.warmupMinutes=Math.max(1,Math.min(120,Number(fresh.warmupMinutes||5)));
     sessionWasRestored=sessionHasProgress(fresh);
     return fresh;
   }catch(e){return blankSession()}
@@ -212,7 +212,7 @@ function workoutElapsedMinutes(s=session,endAt=new Date()){
 function estimateGymBurn(s=session,endAt=new Date()){
   const weight=userWeight();
   const cardioMin=s?.cardio?Number(s.cardioMinutes||20):0;
-  const warmupMin=s?.warmup?5:0;
+  const warmupMin=s?.warmup?Math.max(1,Math.min(120,Number(s.warmupMinutes||5))):0;
   const vibrationMin=s?.vibration?5:0;
   const zeroiMin=completedZeroi(s)*1.5;
   const elapsed=workoutElapsedMinutes(s,endAt);
@@ -239,7 +239,7 @@ function historyGymBurn(h){
   const pseudo={
     sets:Object.fromEntries((h?.exercises||[]).map(e=>[e.id,Array(Math.max(0,Number(e.setsDone||0))).fill(true)])),
     zeroi:Object.fromEntries((h?.zeroi||[]).map(z=>[z.id,true])),
-    warmup:!!h?.warmup,cardio:!!h?.cardio,cardioType:h?.cardioType||"walk",cardioMinutes:Number(h?.cardioMinutes||20),
+    warmup:!!h?.warmup,warmupMinutes:Number(h?.warmupMinutes||5),cardio:!!h?.cardio,cardioType:h?.cardioType||"walk",cardioMinutes:Number(h?.cardioMinutes||20),
     vibration:!!h?.vibration,workoutStartedAt:null
   };
   return estimateGymBurn(pseudo).total;
@@ -523,6 +523,18 @@ function renderToday(){
     b.onclick=()=>{ensureWorkoutStarted();session[k]=!session[k];sessionWasRestored=false;touchSession();renderToday()};
   });
 
+  if($("warmupMinutesInput")){
+    $("warmupMinutesInput").value=Math.max(1,Math.min(120,Number(session.warmupMinutes||5)));
+    $("warmupMinutesInput").onchange=()=>{
+      session.warmupMinutes=Math.max(1,Math.min(120,Math.round(Number($("warmupMinutesInput").value)||5)));
+      sessionWasRestored=false;touchSession();renderToday();
+    };
+  }
+  document.querySelectorAll("[data-warmup-min]").forEach(b=>b.onclick=()=>{
+    session.warmupMinutes=Math.max(1,Math.min(120,Number(session.warmupMinutes||5)+Number(b.dataset.warmupMin)));
+    sessionWasRestored=false;touchSession();renderToday();
+  });
+
   document.querySelectorAll("[data-cardio]").forEach(b=>{
     b.classList.toggle("active",session.cardioType===b.dataset.cardio);
     b.onclick=()=>{session.cardioType=b.dataset.cardio;sessionWasRestored=false;touchSession();renderToday()};
@@ -667,6 +679,7 @@ function finishWorkout({automatic=false}={}){
     calorieWeight:burn.weight,
     zeroi:state.zeroi.filter(z=>session.zeroi[z.id]).map(z=>({id:z.id,name:z.name,reps:z.reps})),
     warmup:session.warmup,
+    warmupMinutes:session.warmup?Number(session.warmupMinutes||5):0,
     cardio:session.cardio,
     cardioType:session.cardioType,
     cardioMinutes:session.cardio?session.cardioMinutes:0,
@@ -695,7 +708,7 @@ $("saveWorkout").onclick=()=>finishWorkout();
 
 
 // ---------- 食事・カロリー v5 ----------
-let foodPreviewData=null;
+let foodPreviewData=null;\nlet foodImageDataUrl="";
 const mealLabel=v=>({breakfast:"朝食",lunch:"昼食",dinner:"夕食",snack:"間食"}[v]||"食事");
 function foodDay(entry){return String(entry.day||entry.date||"").slice(0,10)}
 function selectedFoodDay(){return $("foodDate")?.value||todayKey()}
@@ -704,8 +717,9 @@ function foodsForDay(day=selectedFoodDay()){
 }
 function foodTotals(rows){
   return rows.reduce((a,x)=>({
-    kcal:a.kcal+Number(x.kcal||0),protein:a.protein+Number(x.protein||0),fat:a.fat+Number(x.fat||0),carbs:a.carbs+Number(x.carbs||0)
-  }),{kcal:0,protein:0,fat:0,carbs:0});
+    kcal:a.kcal+Number(x.kcal||0),protein:a.protein+Number(x.protein||0),fat:a.fat+Number(x.fat||0),carbs:a.carbs+Number(x.carbs||0),
+    fiber:a.fiber+Number(x.fiber||0),salt:a.salt+Number(x.salt||0),calcium:a.calcium+Number(x.calcium||0),iron:a.iron+Number(x.iron||0),potassium:a.potassium+Number(x.potassium||0)
+  }),{kcal:0,protein:0,fat:0,carbs:0,fiber:0,salt:0,calcium:0,iron:0,potassium:0});
 }
 function renderFood(){
   if(!$("foodDate").value)$("foodDate").value=todayKey();
@@ -721,19 +735,21 @@ function renderFood(){
   $("calorieFill").style.width=pct+"%";$("calorieFill").classList.toggle("over",remaining<0);
   $("foodBalance").innerHTML=`<div class="totalBurnLine"><span>今日の総消費</span><b>${burn.total} kcal</b></div>
     <div class="balanceLine">収支：<b>${balance>0?"+":balance<0?"−":""}${Math.abs(Math.round(balance))} kcal</b> <span>（摂取 − 消費）</span></div>
-    <div class="macroText">${balance<0?`カロリー赤字 ${Math.abs(Math.round(balance))} kcal`:balance>0?`カロリー超過 ${Math.round(balance)} kcal`:"収支 0 kcal"} / P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g</div>`;
+    <div class="macroText">${balance<0?`カロリー赤字 ${Math.abs(Math.round(balance))} kcal`:balance>0?`カロリー超過 ${Math.round(balance)} kcal`:"収支 0 kcal"} / P ${Math.round(t.protein)}g・F ${Math.round(t.fat)}g・C ${Math.round(t.carbs)}g</div>
+    <div class="nutritionDayLine">食物繊維 ${fmt(t.fiber)}g・塩分 ${fmt(t.salt)}g・Ca ${Math.round(t.calcium)}mg・鉄 ${fmt(t.iron)}mg・K ${Math.round(t.potassium)}mg</div>`;
   $("foodCountText").textContent=`${rows.length}件`;
   $("aiConnectionHint").textContent=state.ai?.endpoint?"AI接続済み。APIキーはスマホ側に保存しません。":"AI未接続：設定 → AI食事解析 にAPI URLを入れると使えます。";
   $("foodTodayList").innerHTML=rows.length?rows.map(x=>{
     const items=Array.isArray(x.items)?x.items:[];
     return `<div class="card foodEntry">
       <div class="foodEntryTop">
-        <div class="meta"><b>${mealLabel(x.meal)}・${escapeHtml(x.title||x.rawText||"食事")}</b><small>${x.createdAt?timeLabel(x.createdAt):""} ${x.source==="ai"?"/ AI推定":"/ 手動"}</small></div>
+        <div class="meta"><b>${mealLabel(x.meal)}・${escapeHtml(x.title||x.rawText||"食事")}</b><small>${x.createdAt?timeLabel(x.createdAt):""} ${x.source==="ai-photo"?"/ 写真AI推定":x.source==="ai"?"/ AI推定":"/ 手動"}</small></div>
         <div class="kcal"><b>${Math.round(Number(x.kcal||0))}</b><small>kcal</small></div>
       </div>
       ${x.rawText&&x.rawText!==x.title?`<p class="foodEntryRaw">${escapeHtml(x.rawText)}</p>`:""}
       ${items.length?`<div class="foodEntryDetails">${items.map(i=>`<div><span>${escapeHtml(i.name||"")} ${escapeHtml(i.amount||"")}</span><b>${Math.round(Number(i.kcal||0))} kcal</b></div>`).join("")}</div>`:""}
       <div class="macroLine"><span>P <b>${Math.round(Number(x.protein||0))}g</b></span><span>F <b>${Math.round(Number(x.fat||0))}g</b></span><span>C <b>${Math.round(Number(x.carbs||0))}g</b></span></div>
+      ${(Number(x.fiber||0)||Number(x.salt||0)||Number(x.calcium||0)||Number(x.iron||0)||Number(x.potassium||0))?`<div class="nutritionMini"><span>食物繊維 ${fmt(x.fiber||0)}g</span><span>糖質 約${fmt(Math.max(0,Number(x.carbs||0)-Number(x.fiber||0)))}g</span><span>塩分 ${fmt(x.salt||0)}g</span><span>Ca ${Math.round(Number(x.calcium||0))}mg</span><span>鉄 ${fmt(x.iron||0)}mg</span><span>K ${Math.round(Number(x.potassium||0))}mg</span></div>`:""}
       <div class="foodEntryActions"><button class="danger" data-delfood="${x.id}">削除</button></div>
     </div>`;
   }).join(""):`<div class="card muted">この日の食事記録はまだありません。</div>`;
@@ -798,6 +814,11 @@ function normalizeAiResult(x){
     protein:Number(x?.protein_g??x?.protein??0)||0,
     fat:Number(x?.fat_g??x?.fat??0)||0,
     carbs:Number(x?.carbs_g??x?.carbs??0)||0,
+    fiber:Number(x?.fiber_g??x?.fiber??0)||0,
+    salt:Number(x?.salt_g??x?.salt??0)||0,
+    calcium:Number(x?.calcium_mg??x?.calcium??0)||0,
+    iron:Number(x?.iron_mg??x?.iron??0)||0,
+    potassium:Number(x?.potassium_mg??x?.potassium??0)||0,
     confidence:String(x?.confidence||"medium"),
     note:String(x?.note||"")
   };
@@ -809,6 +830,7 @@ function renderFoodPreview(){
     <div class="foodPreviewTitle"><strong>AIの推定結果</strong><b>${Math.round(x.kcal)} kcal</b></div>
     <div class="foodPreviewItems">${x.items.map(i=>`<div class="foodPreviewItem"><span>${escapeHtml(i.name)} ${escapeHtml(i.amount)}</span><b>${Math.round(i.kcal)} kcal</b></div>`).join("")}</div>
     <div class="macroLine"><span>P <b>${Math.round(x.protein)}g</b></span><span>F <b>${Math.round(x.fat)}g</b></span><span>C <b>${Math.round(x.carbs)}g</b></span><span>確度 <b>${escapeHtml(x.confidence)}</b></span></div>
+    <div class="nutritionGrid"><span>食物繊維 <b>${fmt(x.fiber)}g</b></span><span>糖質 <b>約${fmt(Math.max(0,x.carbs-x.fiber))}g</b></span><span>塩分 <b>${fmt(x.salt)}g</b></span><span>Ca <b>${Math.round(x.calcium)}mg</b></span><span>鉄 <b>${fmt(x.iron)}mg</b></span><span>K <b>${Math.round(x.potassium)}mg</b></span></div>
     ${x.note?`<p class="tiny muted">${escapeHtml(x.note)}</p>`:""}
     <div class="previewKcalEdit"><label>合計は修正できます</label><div><input id="previewKcal" type="number" min="0" step="1" value="${Math.round(x.kcal)}"> kcal</div></div>
     <div class="previewActions"><button id="cancelFoodPreview" class="sub">やめる</button><button id="saveFoodPreview" class="primary">この内容で記録</button></div>
@@ -816,13 +838,13 @@ function renderFoodPreview(){
   $("cancelFoodPreview").onclick=()=>{foodPreviewData=null;renderFoodPreview()};
   $("saveFoodPreview").onclick=()=>{
     const raw=String($("foodText").value||"").trim();
-    const rec={id:Date.now(),day:selectedFoodDay(),createdAt:new Date().toISOString(),meal:$("foodMeal").value,rawText:raw,title:x.title,items:x.items,kcal:Number($("previewKcal").value)||0,protein:x.protein,fat:x.fat,carbs:x.carbs,source:"ai"};
-    state.foods.unshift(rec);save();foodPreviewData=null;$("foodText").value="";renderFood();toast("食事を記録しました");
+    const rec={id:Date.now(),day:selectedFoodDay(),createdAt:new Date().toISOString(),meal:$("foodMeal").value,rawText:raw||x.title,title:x.title,items:x.items,kcal:Number($("previewKcal").value)||0,protein:x.protein,fat:x.fat,carbs:x.carbs,fiber:x.fiber,salt:x.salt,calcium:x.calcium,iron:x.iron,potassium:x.potassium,source:foodImageDataUrl?"ai-photo":"ai"};
+    state.foods.unshift(rec);save();foodPreviewData=null;foodImageDataUrl="";$("foodText").value="";renderFoodImagePreview();renderFood();toast("食事を記録しました");
   };
 }
 async function analyzeFood(){
   const text=String($("foodText").value||"").trim();
-  if(!text){toast("食べたものを入力してください");return}
+  if(!text&&!foodImageDataUrl){toast("食べたものを入力するか、写真を選んでください");return}
   const endpoint=String(state.ai?.endpoint||"").trim();
   if(!endpoint){toast("設定でAI API URLを登録してください");page("settings");return}
   // 旧版のsessionStorage PINがあれば1回だけ移行。
@@ -839,10 +861,10 @@ async function analyzeFood(){
     if(!saveAiPinLocal(pin)){toast("PINを端末に保存できませんでした");return}
     updateAiPinStatus();
   }
-  $("foodPreview").innerHTML='<div class="card aiLoading"><span class="aiDot"></span><span>AIがカロリーを計算しています…</span></div>';
+  $("foodPreview").innerHTML='<div class="card aiLoading"><span class="aiDot"></span><span>AIが写真と栄養を解析しています…</span></div>';
   $("analyzeFood").disabled=true;
   try{
-    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({pin,text,meal:mealLabel($("foodMeal").value)})});
+    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8","X-App-Pin":pin},body:JSON.stringify({pin,text,meal:mealLabel($("foodMeal").value),image:foodImageDataUrl||null})});
     const data=await r.json().catch(()=>({}));
     if(!r.ok){
       const er=new Error(data.error||`HTTP ${r.status}`);
@@ -859,8 +881,30 @@ async function analyzeFood(){
     foodPreviewData=null;$("foodPreview").innerHTML=`<div class="card"><b>AI送信に失敗しました</b><p class="muted tiny">${escapeHtml(err.message||"接続を確認してください")}</p></div>`;
   }finally{$("analyzeFood").disabled=false}
 }
+function renderFoodImagePreview(){
+  const box=$("foodImagePreview");if(!box)return;
+  if(!foodImageDataUrl){box.hidden=true;box.innerHTML="";return}
+  box.hidden=false;box.innerHTML=`<img src="${foodImageDataUrl}" alt="解析する食事写真"><button id="clearFoodImage" class="sub compact">写真を外す</button>`;
+  $("clearFoodImage").onclick=()=>{foodImageDataUrl="";renderFoodImagePreview()};
+}
+async function compressFoodImage(file){
+  if(!file||!String(file.type||"").startsWith("image/"))throw new Error("画像ファイルを選んでください");
+  const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||""));r.onerror=()=>reject(new Error("写真を読み込めませんでした"));r.readAsDataURL(file)});
+  const img=await new Promise((resolve,reject)=>{const x=new Image();x.onload=()=>resolve(x);x.onerror=()=>reject(new Error("写真を開けませんでした"));x.src=data});
+  const max=1280,scale=Math.min(1,max/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));
+  const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);
+  return c.toDataURL("image/jpeg",.78);
+}
+async function onFoodImage(file,input){
+  try{foodImageDataUrl=await compressFoodImage(file);foodPreviewData=null;renderFoodImagePreview();renderFoodPreview();toast("写真を追加しました。AI解析を押してください")}
+  catch(e){toast(e.message||"写真を読み込めませんでした")}
+  finally{if(input)input.value=""}
+}
+if($("foodCameraInput")) $("foodCameraInput").onchange=e=>onFoodImage(e.target.files?.[0],e.target);
+if($("foodPhotoInput")) $("foodPhotoInput").onchange=e=>onFoodImage(e.target.files?.[0],e.target);
+
 $("analyzeFood").onclick=analyzeFood;
-$("foodDate").onchange=()=>{foodPreviewData=null;renderFood()};
+$("foodDate").onchange=()=>{foodPreviewData=null;foodImageDataUrl="";renderFoodImagePreview();renderFood()};
 $("manualFoodSave").onclick=()=>{
   const name=String($("manualFoodName").value||"").trim(),kcal=Number($("manualFoodKcal").value);
   if(!name||!Number.isFinite(kcal)||kcal<0){toast("内容とカロリーを入力してください");return}
@@ -868,8 +912,8 @@ $("manualFoodSave").onclick=()=>{
   save();$("manualFoodName").value="";$("manualFoodKcal").value="";renderFood();toast("手動で食事を追加しました");
 };
 $("foodCsvBtn").onclick=()=>{
-  const rows=[["日付","時刻","区分","内容","kcal","たんぱく質g","脂質g","炭水化物g","入力方法"]];
-  [...(state.foods||[])].sort((a,b)=>new Date(a.createdAt||a.day)-new Date(b.createdAt||b.day)).forEach(x=>rows.push([foodDay(x),x.createdAt?timeLabel(x.createdAt):"",mealLabel(x.meal),x.rawText||x.title||"",x.kcal||0,x.protein||0,x.fat||0,x.carbs||0,x.source==="ai"?"AI":"手動"]));
+  const rows=[["日付","時刻","区分","内容","kcal","たんぱく質g","脂質g","炭水化物g","食物繊維g","塩分g","カルシウムmg","鉄mg","カリウムmg","入力方法"]];
+  [...(state.foods||[])].sort((a,b)=>new Date(a.createdAt||a.day)-new Date(b.createdAt||b.day)).forEach(x=>rows.push([foodDay(x),x.createdAt?timeLabel(x.createdAt):"",mealLabel(x.meal),x.rawText||x.title||"",x.kcal||0,x.protein||0,x.fat||0,x.carbs||0,x.fiber||0,x.salt||0,x.calcium||0,x.iron||0,x.potassium||0,x.source==="ai-photo"?"写真AI":x.source==="ai"?"AI":"手動"]));
   const csv="\uFEFF"+rows.map(r=>r.map(csvCell).join(",")).join("\r\n");downloadBlob(csv,"text/csv;charset=utf-8",`gym-note-food-${todayKey()}.csv`);
 };
 (function setupFoodVoice(){
@@ -893,7 +937,7 @@ function defaultHistoryRange(){const end=todayKey();return {start:`${end.slice(0
 function normalizeHistoryRange(){if(!$("historyStart").value||!$("historyEnd").value){const x=defaultHistoryRange();$("historyStart").value=x.start;$("historyEnd").value=x.end}if($("historyStart").value>$("historyEnd").value){const x=$("historyStart").value;$("historyStart").value=$("historyEnd").value;$("historyEnd").value=x}return {start:$("historyStart").value,end:$("historyEnd").value}}
 function historyRowsInRange(){const {start,end}=normalizeHistoryRange();return (state.history||[]).filter(h=>{const d=isoDay(h.date);return d>=start&&d<=end}).sort((a,b)=>new Date(b.date)-new Date(a.date))}
 function recalcHistoryBurn(h,durationMinutes){
-  const duration=Math.max(0,Math.min(600,Number(durationMinutes)||0)),weight=Number(h?.calorieWeight)||userWeight(),cardioMin=h?.cardio?Number(h.cardioMinutes||20):0,warmupMin=h?.warmup?5:0,vibrationMin=h?.vibration?5:0,zeroiMin=(h?.zeroi?.length||0)*1.5;
+  const duration=Math.max(0,Math.min(600,Number(durationMinutes)||0)),weight=Number(h?.calorieWeight)||userWeight(),cardioMin=h?.cardio?Number(h.cardioMinutes||20):0,warmupMin=h?.warmup?Number(h.warmupMinutes||5):0,vibrationMin=h?.vibration?5:0,zeroiMin=(h?.zeroi?.length||0)*1.5;
   const strengthMin=Math.max(0,duration-(cardioMin+warmupMin+vibrationMin+zeroiMin));
   const breakdown={stretch:Math.round(metKcal(2.5,zeroiMin,weight)),strength:Math.round(metKcal(4.5,strengthMin,weight)),warmup:Math.round(metKcal(3.5,warmupMin,weight)),cardio:Math.round(metKcal(h?.cardioType==="bike"?5.5:4.8,cardioMin,weight)),vibration:Math.round(metKcal(2.0,vibrationMin,weight))};
   return {duration,total:Object.values(breakdown).reduce((a,n)=>a+Number(n||0),0),breakdown,weight};
@@ -917,7 +961,7 @@ function historyExerciseText(e){
 function renderHistory(){
   populateHistoryControls();const rows=historyRowsInRange(),sets=rows.reduce((a,h)=>a+(h.exercises||[]).reduce((b,e)=>b+(e.setsDone||0),0),0),cardio=rows.reduce((a,h)=>a+(h.cardio?Number(h.cardioMinutes||20):0),0),gymKcal=rows.reduce((a,h)=>a+historyGymBurn(h),0),gymMinutes=rows.reduce((a,h)=>a+Number(h.durationMinutes||0),0),zeroi=rows.reduce((a,h)=>a+(h.zeroi?.length||0),0);
   renderRangeCalorieSummary();$("historySummary").innerHTML=`<div class="card"><b>${rows.length}</b><small>ジム回数</small></div><div class="card"><b>${sets}</b><small>総セット</small></div><div class="card"><b>${gymMinutes}</b><small>滞在 分</small></div><div class="card"><b>${cardio}</b><small>有酸素 分</small></div><div class="card"><b>${zeroi}</b><small>ZERO-i 種目</small></div><div class="card"><b>🔥 ${Math.round(gymKcal)}</b><small>ジム kcal</small></div>`;$("historyListMeta").textContent=`${rows.length}件・期間内をすべて表示`;
-  $("historyList").innerHTML=rows.length?rows.map(h=>{const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0),dur=Number(h.durationMinutes||0),b=historyBreakdown(h),started=h.workoutStartedAt?timeLabel(h.workoutStartedAt):"—",ended=(h.workoutEndedAt||h.date)?timeLabel(h.workoutEndedAt||h.date):"—",zeroNames=(h.zeroi||[]).map(z=>z.jp||z.name).filter(Boolean);return `<details class="card historyCard"><summary><div class="historySummaryRow"><div class="date"><b>${dateLabel(h.date)}${h.menu?` <span class="menuMini">${h.menu==="HOME"?"🏠":h.menu}</span>`:""}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${dur?dur+"分":"時間未記録"}${h.durationCorrected?"・訂正済":""}</small></div><span class="count">${setCount} set ▾</span></div></summary><div class="historyBody"><div class="historyOverview"><div><span>開始</span><b>${started}</b></div><div><span>終了</span><b>${ended}</b></div><div><span>滞在</span><b>${dur?dur+"分":"—"}</b></div><div><span>消費</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div><div class="durationEdit"><label>ジム滞在時間を訂正<input type="number" inputmode="numeric" min="0" max="600" step="1" value="${dur||""}" placeholder="分" data-duration-input="${h.id}"></label><button class="sub" data-save-duration="${h.id}">保存して再計算</button></div><div class="historyDetail"><div><span>ZERO-i</span><b>${h.zeroi?.length||0}/4種${zeroNames.length?`（${zeroNames.map(escapeHtml).join("・")}）`:""}</b></div><div><span>ウォームアップ</span><b>${h.warmup?"完了（5分）":"—"}</b></div>${(h.exercises||[]).map(e=>`<div><span>${escapeHtml(e.name)}</span><b>${historyExerciseText(e)}</b></div>`).join("")}<div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div><div><span>振動マシン</span><b>${h.vibration?"完了（5分）":"—"}</b></div></div><div class="historyBurnBreakdown"><div><span>ZERO-i</span><b>${Math.round(Number(b.stretch||0))} kcal</b></div><div><span>筋トレ・休憩</span><b>${Math.round(Number(b.strength||0))} kcal</b></div><div><span>ウォームアップ</span><b>${Math.round(Number(b.warmup||0))} kcal</b></div><div><span>有酸素</span><b>${Math.round(Number(b.cardio||0))} kcal</b></div><div><span>振動</span><b>${Math.round(Number(b.vibration||0))} kcal</b></div><div class="total"><span>ジム消費 合計</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div>${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}<div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div></div></details>`}).join(""):`<div class="card muted">指定期間のトレーニング履歴はまだありません。</div>`;
+  $("historyList").innerHTML=rows.length?rows.map(h=>{const setCount=(h.exercises||[]).reduce((a,e)=>a+(e.setsDone||0),0),dur=Number(h.durationMinutes||0),b=historyBreakdown(h),started=h.workoutStartedAt?timeLabel(h.workoutStartedAt):"—",ended=(h.workoutEndedAt||h.date)?timeLabel(h.workoutEndedAt||h.date):"—",zeroNames=(h.zeroi||[]).map(z=>z.jp||z.name).filter(Boolean);return `<details class="card historyCard"><summary><div class="historySummaryRow"><div class="date"><b>${dateLabel(h.date)}${h.menu?` <span class="menuMini">${h.menu==="HOME"?"🏠":h.menu}</span>`:""}</b><small>${timeLabel(h.date)} / 🔥 約${Math.round(historyGymBurn(h))} kcal / ${dur?dur+"分":"時間未記録"}${h.durationCorrected?"・訂正済":""}</small></div><span class="count">${setCount} set ▾</span></div></summary><div class="historyBody"><div class="historyOverview"><div><span>開始</span><b>${started}</b></div><div><span>終了</span><b>${ended}</b></div><div><span>滞在</span><b>${dur?dur+"分":"—"}</b></div><div><span>消費</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div><div class="durationEdit"><label>ジム滞在時間を訂正<input type="number" inputmode="numeric" min="0" max="600" step="1" value="${dur||""}" placeholder="分" data-duration-input="${h.id}"></label><button class="sub" data-save-duration="${h.id}">保存して再計算</button></div><div class="historyDetail"><div><span>ZERO-i</span><b>${h.zeroi?.length||0}/4種${zeroNames.length?`（${zeroNames.map(escapeHtml).join("・")}）`:""}</b></div><div><span>ウォームアップ</span><b>${h.warmup?`完了（${Number(h.warmupMinutes||5)}分）`:"—"}</b></div>${(h.exercises||[]).map(e=>`<div><span>${escapeHtml(e.name)}</span><b>${historyExerciseText(e)}</b></div>`).join("")}<div><span>有酸素</span><b>${h.cardio?(h.cardioType==="bike"?"バイク":"ウォーキング")+" "+(h.cardioMinutes||20)+"分":"—"}</b></div><div><span>振動マシン</span><b>${h.vibration?"完了（5分）":"—"}</b></div></div><div class="historyBurnBreakdown"><div><span>ZERO-i</span><b>${Math.round(Number(b.stretch||0))} kcal</b></div><div><span>筋トレ・休憩</span><b>${Math.round(Number(b.strength||0))} kcal</b></div><div><span>ウォームアップ</span><b>${Math.round(Number(b.warmup||0))} kcal</b></div><div><span>有酸素</span><b>${Math.round(Number(b.cardio||0))} kcal</b></div><div><span>振動</span><b>${Math.round(Number(b.vibration||0))} kcal</b></div><div class="total"><span>ジム消費 合計</span><b>🔥 ${Math.round(historyGymBurn(h))} kcal</b></div></div>${h.note?`<div class="historyNote"><b>メモ</b><br>${escapeHtml(h.note)}</div>`:""}<div class="historyActions"><button class="danger" data-delhistory="${h.id}">この記録を削除</button></div></div></details>`}).join(""):`<div class="card muted">指定期間のトレーニング履歴はまだありません。</div>`;
   document.querySelectorAll("[data-save-duration]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const id=String(b.dataset.saveDuration),h=state.history.find(x=>String(x.id)===id),inp=document.querySelector(`[data-duration-input="${id}"]`),min=Number(inp?.value);if(!h||!Number.isFinite(min)||min<0||min>600){toast("滞在時間は0〜600分で入力してください");return}setHistoryDuration(h,Math.round(min));save();renderHistory();toast("ジム滞在時間と消費カロリーを訂正しました")});
   document.querySelectorAll("[data-delhistory]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();if(!confirm("このトレーニング記録を削除しますか？"))return;state.history=state.history.filter(h=>String(h.id)!==String(b.dataset.delhistory));save();renderHistory();toast("履歴を削除しました")});drawStrengthChart();
 }
