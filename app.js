@@ -153,7 +153,8 @@ function loadSession(){
       if(!Array.isArray(fresh.setReps[e.id])) fresh.setReps[e.id]=Array(e.sets).fill(Number(e.reps)||10);
       while(fresh.setReps[e.id].length<e.sets)fresh.setReps[e.id].push(Number(e.reps)||10);
     });
-    state.zeroi.forEach(z=>{if(fresh.zeroi[z.id]==null)fresh.zeroi[z.id]=false});\n    fresh.warmupMinutes=Math.max(1,Math.min(120,Number(fresh.warmupMinutes||5)));
+    state.zeroi.forEach(z=>{if(fresh.zeroi[z.id]==null)fresh.zeroi[z.id]=false});
+    fresh.warmupMinutes=Math.max(1,Math.min(120,Number(fresh.warmupMinutes||5)));
     sessionWasRestored=sessionHasProgress(fresh);
     return fresh;
   }catch(e){return blankSession()}
@@ -708,7 +709,8 @@ $("saveWorkout").onclick=()=>finishWorkout();
 
 
 // ---------- 食事・カロリー v5 ----------
-let foodPreviewData=null;\nlet foodImageDataUrl="";
+let foodPreviewData=null;
+let foodImageDataUrl="";
 const mealLabel=v=>({breakfast:"朝食",lunch:"昼食",dinner:"夕食",snack:"間食"}[v]||"食事");
 function foodDay(entry){return String(entry.day||entry.date||"").slice(0,10)}
 function selectedFoodDay(){return $("foodDate")?.value||todayKey()}
